@@ -39,7 +39,10 @@ class NotificationScheduler {
 
   DateTime? _lastRescheduleAt;
 
-  /// Prepares timezone data, notification channels, and requests OS permissions.
+  /// Prepares timezone data, notification channels, and the notification plugin.
+  ///
+  /// Does **not** show OS permission dialogs; call [requestOsNotificationPermissions]
+  /// from UI (e.g. the one-time prompt on Home) when the user opts in.
   ///
   /// Safe to call multiple times; subsequent calls no-op after the first success.
   /// On web and Linux, scheduling is unsupported—this returns without error.
@@ -75,8 +78,6 @@ class NotificationScheduler {
     if (Platform.isAndroid) {
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-      await android?.requestNotificationsPermission();
-      await android?.requestExactAlarmsPermission();
 
       await android?.createNotificationChannel(
         const AndroidNotificationChannel(
@@ -96,6 +97,32 @@ class NotificationScheduler {
       );
     }
 
+    _initialized = true;
+  }
+
+  /// OS permission prompts for notifications (and exact alarms on Android).
+  ///
+  /// Call from UI when the user explicitly opts in (e.g. Home screen dialog).
+  /// [initialize] must have completed first (typically from [main]).
+  ///
+  /// Returns: future completing after platform calls (no-op on web / Linux).
+  Future<void> requestOsNotificationPermissions() async {
+    if (kIsWeb || Platform.isLinux) {
+      return;
+    }
+    if (!_initialized) {
+      await initialize();
+    }
+    if (!_initialized) {
+      return;
+    }
+
+    if (Platform.isAndroid) {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestNotificationsPermission();
+      await android?.requestExactAlarmsPermission();
+    }
     if (Platform.isIOS) {
       await _plugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -106,8 +133,6 @@ class NotificationScheduler {
           .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
-
-    _initialized = true;
   }
 
   /// Loads IANA tzdata and aligns [tz.local] with the device timezone.

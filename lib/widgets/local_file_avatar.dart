@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'local_file_avatar_stub.dart'
     if (dart.library.io) 'local_file_avatar_io.dart' as impl;
 
-/// Shows a circular image from [absolutePath] when the file exists on IO builds.
+/// Circular avatar from [absolutePath]: **HTTPS URL** or **local file** on IO builds.
+///
+/// On load/decode failure, returns [fallback] (e.g. initial letter from [FriendAvatar]).
 ///
 /// Parameters:
-/// - [absolutePath]: optional filesystem path; ignored on web or when missing.
+/// - [absolutePath]: optional `https://…` URL or disk path; on web, only URLs show a photo.
 /// - [radius]: avatar radius.
-/// - [fallback]: widget when no usable local file (or on web).
+/// - [fallback]: widget when the path is missing, not a URL on web, or load fails.
 ///
 /// Returns: a circular clipped avatar.
 Widget buildLocalFileAvatar({

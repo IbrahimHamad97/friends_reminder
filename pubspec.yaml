@@ -26,6 +26,12 @@ dependencies:
   timezone: ^0.10.1
   flutter_timezone: ^4.1.1
   share_plus: ^10.1.4
+  flutter_colorpicker: ^1.1.0
+  flutter_image_compress: ^2.4.0
+  image: ^4.8.0
+  crop_your_image: ^2.0.0
+  http: ^1.2.2
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -40,6 +46,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_mascot.png
+    - assets/config/cloudinary.env
 
 flutter_launcher_icons:
   android: true
@@ -50,9 +57,12 @@ flutter_launcher_icons:
   min_sdk_android: 21
 
 flutter_native_splash:
-  color: "#FFF8F5"
+  color: "#12161F"
+  image: assets/branding/app_mascot.png
   android_12:
-    color: "#FFF8F5"
+    color: "#12161F"
+    image: assets/branding/app_mascot.png
+    icon_background_color: "#1A2233"
   ios: true
   android: true
   web: true

@@ -215,9 +215,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Everything runs on-device (no FCM). Allow notifications and, on '
-                                'Android 14+, allow Alarms & reminders so fire times stay accurate. '
-                                'Battery-saving modes can still delay alerts on some phones.',
+                                'The first time you open Home, the app asks whether to enable alerts. '
+                                'If you skipped that or chose Not now, turn notifications on here: '
+                                'Android — Settings → Apps → Friends Reminder → Notifications (and on '
+                                'Android 12+ also allow Alarms & reminders / exact alarms if you want '
+                                'reliable fire times). iOS — Settings → Notifications → Friends Reminder. '
+                                'Battery savers can still delay delivery.',
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       color: scheme.onSurfaceVariant,
                                     ),

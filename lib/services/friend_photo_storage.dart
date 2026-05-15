@@ -1,67 +1,54 @@
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 
-/// Copies picked images into app-private storage and deletes unused files.
+import '../utils/picked_photo_reduce.dart';
+import 'cloudinary_upload_service.dart';
+
+/// Compresses picked images client-side, uploads to Cloudinary, returns HTTPS URLs.
 class FriendPhotoStorage {
   FriendPhotoStorage._();
 
-  /// Ensures the friend photo directory exists and returns it.
-  ///
-  /// Returns: `friend_photos` under the app documents directory.
-  static Future<Directory> friendPhotosDirectory() async {
-    final root = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(root.path, 'friend_photos'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
-
-  /// Copies a file at [sourcePath] into permanent storage for [friendId].
+  /// Uploads a file at [sourcePath] for [friendId] after resize/JPEG re-encode.
   ///
   /// Parameters:
-  /// - [friendId]: owning friend row id used in the filename.
-  /// - [sourcePath]: absolute path from the image picker.
+  /// - [friendId]: owning friend row id (used in the upload filename hint).
+  /// - [sourcePath]: absolute path from the image picker / crop temp file.
   ///
-  /// Returns: absolute path to the copied image (jpg/png preserved by extension).
+  /// Returns: `https://…` secure URL from Cloudinary.
   static Future<String> saveForFriendFromPath(int friendId, String sourcePath) async {
     return saveForFriend(friendId, File(sourcePath));
   }
 
-  /// Copies [source] into permanent storage for [friendId].
-  ///
-  /// Parameters:
-  /// - [friendId]: owning friend row id used in the filename.
-  /// - [source]: temporary file from the image picker.
-  ///
-  /// Returns: absolute path to the copied image (jpg/png preserved by extension).
+  /// Same as [saveForFriendFromPath] with an open [File].
   static Future<String> saveForFriend(int friendId, File source) async {
-    final ext = p.extension(source.path);
-    final safeExt = ext.isEmpty ? '.jpg' : ext;
-    final dir = await friendPhotosDirectory();
-    final dest = File(p.join(dir.path, 'friend_$friendId$safeExt'));
-    if (await dest.exists()) {
-      await dest.delete();
+    if (kIsWeb) {
+      throw UnsupportedError('Friend photos are not saved on web');
     }
-    await source.copy(dest.path);
-    return dest.path;
+    final bytes = await PickedPhotoReducer.readReducedJpegBytes(
+      source,
+      PickedPhotoKind.friendAvatar,
+    );
+    return CloudinaryUploadService.uploadImage(
+      bytes: bytes,
+      filename: 'friend_$friendId.jpg',
+      subfolder: 'friends',
+    );
   }
 
-  /// Deletes a stored image if [path] is non-null and the file exists.
-  ///
-  /// Parameters:
-  /// - [path]: absolute path previously returned by [saveForFriend].
-  ///
-  /// Returns: future that completes when deletion is attempted.
+  /// Deletes a local file when [path] is a filesystem path; no-op for remote URLs.
   static Future<void> deleteIfExists(String? path) async {
-    if (path == null || path.isEmpty) {
+    if (path == null || path.isEmpty || _looksLikeHttpUrl(path)) {
       return;
     }
     final file = File(path);
     if (await file.exists()) {
       await file.delete();
     }
+  }
+
+  static bool _looksLikeHttpUrl(String path) {
+    final t = path.trim().toLowerCase();
+    return t.startsWith('http://') || t.startsWith('https://');
   }
 }

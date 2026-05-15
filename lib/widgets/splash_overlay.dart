@@ -1,26 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Short animated splash above [child]: title, tagline, and icon only (no photos).
+import '../theme/app_theme.dart';
+
+/// Short splash: mascot + copy slide up slightly while fading in, then the whole overlay fades out.
 ///
-/// Blocks taps on [child] until the animation completes.
+/// Native splash uses the same mascot on a dark background for a seamless cold start.
 class SplashOverlay extends StatefulWidget {
-  /// Wraps [child] with a text-first intro animation.
-  ///
-  /// Parameters:
-  /// - [child]: app root (typically [MaterialApp]).
-  /// - [title]: main heading.
-  /// - [subtitle]: supporting line under the title.
-  /// - [backgroundColor]: full-screen background.
-  /// - [accentColor]: icon and highlights (match app seed).
-  /// - [totalDuration]: controller length (enter + hold + exit).
+  /// Wraps [child] with a short branded intro.
   const SplashOverlay({
     super.key,
     required this.child,
     this.title = 'Friends Reminder',
     this.subtitle = 'Birthdays & check-ins, kept close',
-    this.backgroundColor = const Color(0xFFFFF8F5),
-    this.accentColor = const Color(0xFFE26A5A),
-    this.totalDuration = const Duration(milliseconds: 2600),
+    this.totalDuration = const Duration(milliseconds: 2200),
   });
 
   /// App tree after the splash finishes.
@@ -32,12 +25,6 @@ class SplashOverlay extends StatefulWidget {
   /// Secondary line of copy.
   final String subtitle;
 
-  /// Background fill.
-  final Color backgroundColor;
-
-  /// Accent for icon decoration.
-  final Color accentColor;
-
   /// Total animation length.
   final Duration totalDuration;
 
@@ -48,11 +35,13 @@ class SplashOverlay extends StatefulWidget {
 class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
-  /// Brand column fades and scales in.
-  late Animation<double> _markOpacity;
-  late Animation<double> _markScale;
+  /// Entrance: fade in.
+  late Animation<double> _enterOpacity;
 
-  /// Whole overlay fades out at the end.
+  /// Entrance: slide up from a bit below.
+  late Animation<Offset> _enterSlide;
+
+  /// Whole splash fades out at the end.
   late Animation<double> _shellOpacity;
 
   bool _finished = false;
@@ -65,20 +54,27 @@ class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProvider
       duration: widget.totalDuration,
     );
 
-    _markOpacity = CurvedAnimation(
+    const enterCurve = Curves.easeOutCubic;
+
+    _enterOpacity = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.0, 0.32, curve: Curves.easeOut),
+      curve: const Interval(0.0, 0.40, curve: enterCurve),
     );
-    _markScale = Tween<double>(begin: 0.92, end: 1.0).animate(
+
+    _enterSlide = Tween<Offset>(
+      begin: const Offset(0, 0.14),
+      end: Offset.zero,
+    ).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.40, curve: Curves.easeOutCubic),
+        curve: const Interval(0.0, 0.44, curve: enterCurve),
       ),
     );
+
     _shellOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.64, 1.0, curve: Curves.easeIn),
+        curve: const Interval(0.58, 1.0, curve: Curves.easeIn),
       ),
     );
 
@@ -95,62 +91,23 @@ class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProvider
     super.dispose();
   }
 
-  /// Centered text + icon block (no network, no assets).
-  ///
-  /// Parameters:
-  /// - [context]: used only for [DefaultTextStyle] if needed; colors come from [widget].
-  ///
-  /// Returns: padded column for the scale/fade transition.
-  Widget _brandColumn() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              color: widget.accentColor.withValues(alpha: 0.18),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.favorite_rounded,
-              size: 44,
-              color: widget.accentColor,
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-              height: 1.15,
-              color: const Color(0xFF1C1B1F).withValues(alpha: 0.92),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            widget.subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-              color: const Color(0xFF1C1B1F).withValues(alpha: 0.55),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final showSplash = !_finished;
+    final scheme = AppTheme.dark.colorScheme;
+    final titleStyle = GoogleFonts.plusJakartaSans(
+      fontSize: 32,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.8,
+      height: 1.12,
+      color: scheme.onSurface,
+    );
+    final subtitleStyle = GoogleFonts.plusJakartaSans(
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      height: 1.4,
+      color: scheme.onSurfaceVariant,
+    );
 
     return Stack(
       fit: StackFit.expand,
@@ -164,20 +121,57 @@ class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProvider
           AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
+              final shell = _shellOpacity.value.clamp(0.0, 1.0);
+
               return Opacity(
-                opacity: _shellOpacity.value.clamp(0.0, 1.0),
-                child: Container(
-                  color: widget.backgroundColor,
-                  alignment: Alignment.center,
-                  child: Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: FadeTransition(
-                      opacity: _markOpacity,
-                      child: ScaleTransition(
-                        scale: _markScale,
-                        child: _brandColumn(),
+                opacity: shell,
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    alignment: Alignment.center,
+                    children: [
+                      Positioned.fill(
+                        child: ColoredBox(color: scheme.surface),
                       ),
-                    ),
+                      Center(
+                        child: FadeTransition(
+                          opacity: _enterOpacity,
+                          child: SlideTransition(
+                            position: _enterSlide,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ClipOval(
+                                    child: Image.asset(
+                                      'assets/branding/app_mascot.png',
+                                      width: 112,
+                                      height: 112,
+                                      fit: BoxFit.cover,
+                                      filterQuality: FilterQuality.high,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 26),
+                                  Text(
+                                    widget.title,
+                                    textAlign: TextAlign.center,
+                                    style: titleStyle,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    widget.subtitle,
+                                    textAlign: TextAlign.center,
+                                    style: subtitleStyle,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );

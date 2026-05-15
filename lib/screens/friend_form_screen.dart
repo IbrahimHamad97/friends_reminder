@@ -5,26 +5,35 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/friend_photo_storage.dart';
 import '../services/friend_service.dart';
+import '../services/group_service.dart';
 import '../services/notification_scheduler.dart';
+import '../data/database.dart';
+import '../utils/circular_photo_crop.dart';
 import '../utils/date_utils.dart';
 import '../utils/validators.dart';
 import '../widgets/local_file_avatar.dart';
 
-/// Create or edit a friend: name, birthday, notes, reminder cadence, optional photo.
+/// Create or edit a friend: identity, birthday, notes, reminder cadence, optional photo,
+/// and **group membership** (chips synced via [GroupService.setGroupsForFriend] on save).
 class FriendFormScreen extends StatefulWidget {
-  /// Creates a form for a new friend when [friendId] is `null`.
+  /// Creates a form for a new friend when [friendId] is `null`, or loads an existing row.
   ///
   /// Parameters:
-  /// - [friendService]: persistence layer.
-  /// - [friendId]: when set, the form loads and updates that record.
+  /// - [friendService]: persistence for the friend row and photo path.
+  /// - [groupService]: load/save which groups include this friend.
+  /// - [friendId]: when non-null, edit mode; otherwise create mode.
   const FriendFormScreen({
     super.key,
     required this.friendService,
+    required this.groupService,
     this.friendId,
   });
 
   /// Persistence API.
   final FriendService friendService;
+
+  /// Group membership when saving.
+  final GroupService groupService;
 
   /// Optional id selecting the friend to edit.
   final int? friendId;
@@ -33,6 +42,7 @@ class FriendFormScreen extends StatefulWidget {
   State<FriendFormScreen> createState() => _FriendFormScreenState();
 }
 
+/// State for [FriendFormScreen]: form fields, media staging, group chips, and persistence.
 class _FriendFormScreenState extends State<FriendFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
@@ -51,25 +61,40 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
   /// Last "reached out" instant when editing; drives rhythm reset in UI copy.
   DateTime? _lastContactedAt;
 
+  /// All groups (name order) used to build the membership chips.
+  List<GroupRow> _allGroups = [];
+
+  /// Group ids this friend belongs to; persisted with [GroupService.setGroupsForFriend].
+  Set<int> _selectedGroupIds = {};
+
   /// When true, clears the stored photo on save.
   bool _removeStoredPhoto = false;
 
   /// Whether the screen is editing an existing id.
   bool get _isEditing => widget.friendId != null;
 
+  /// Wires text controllers and starts [_bootstrap].
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController();
     _notesController = TextEditingController();
     _reminderDaysController = TextEditingController(text: '14');
-    _loadIfEditing();
+    _bootstrap();
   }
 
-  /// Loads an existing friend into controllers when [friendId] is present.
+  /// Loads ordered groups, then (in edit mode) the friend row and current group ids.
   ///
-  /// Returns: future that completes when fields are populated or on failure.
-  Future<void> _loadIfEditing() async {
+  /// Pops the route if the friend id is missing. Sets [_initialized] when ready to build.
+  ///
+  /// Returns: future that completes when bootstrap finishes or navigates away.
+  Future<void> _bootstrap() async {
+    final groups = await widget.groupService.getAllGroupsOrdered();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _allGroups = groups);
+
     final id = widget.friendId;
     if (id == null) {
       setState(() => _initialized = true);
@@ -97,12 +122,18 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     _reminderDaysController.text = '${row.reminderIntervalDays}';
     _storedPhotoPath = row.photoPath;
     _lastContactedAt = row.lastContactedAt;
+    final gids = await widget.groupService.getGroupIdsForFriend(id);
+    if (!mounted) {
+      return;
+    }
     setState(() {
+      _selectedGroupIds = gids;
       _loading = false;
       _initialized = true;
     });
   }
 
+  /// Disposes all text controllers owned by this state.
   @override
   void dispose() {
     _nameController.dispose();
@@ -118,8 +149,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     final picker = ImagePicker();
     final xFile = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 85,
+      maxWidth: 2400,
+      imageQuality: 95,
     );
     if (xFile == null || !mounted) {
       return;
@@ -132,8 +163,20 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
       );
       return;
     }
+    final bytes = await xFile.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+    final croppedPath = await CircularPhotoCrop.pushCropEditor(
+      context,
+      imageBytes: bytes,
+      title: 'Crop photo',
+    );
+    if (!mounted || croppedPath == null) {
+      return;
+    }
     setState(() {
-      _pickedImagePath = xFile.path;
+      _pickedImagePath = croppedPath;
       _removeStoredPhoto = false;
     });
   }
@@ -174,19 +217,21 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     return t.isEmpty ? null : t;
   }
 
-  /// Parses reminder interval or returns null if invalid.
+  /// Parses reminder interval from text; returns `null` if not a positive integer.
   ///
   /// Parameters:
-  /// - [text]: controller text.
+  /// - [text]: raw text field value.
   ///
-  /// Returns: parsed days or null.
+  /// Returns: parsed days, or `null` when invalid.
   int? _parseReminderDays(String text) {
     return int.tryParse(text.trim());
   }
 
-  /// Persists the row and optional photo file, then pops on success.
+  /// Persists the friend row, optional photo, **and** group links, then pops on success.
   ///
-  /// Returns: future completing after save attempt.
+  /// Calls [GroupService.setGroupsForFriend] after the friend id is known.
+  ///
+  /// Returns: future completing after save attempt (shows snackbar on error).
   Future<void> _submit() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
@@ -200,32 +245,34 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     }
 
     try {
+      late final int savedId;
       if (_isEditing) {
-        final id = widget.friendId!;
-        final previous = await widget.friendService.getFriendById(id);
+        savedId = widget.friendId!;
+        final previous = await widget.friendService.getFriendById(savedId);
         await widget.friendService.updateFriend(
-          id: id,
+          id: savedId,
           name: name,
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
         );
         await _syncPhotoAfterSave(
-          friendId: id,
+          friendId: savedId,
           previousPath: previous?.photoPath,
         );
       } else {
-        final id = await widget.friendService.createFriend(
+        savedId = await widget.friendService.createFriend(
           name: name,
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
         );
         await _syncPhotoAfterSave(
-          friendId: id,
+          friendId: savedId,
           previousPath: null,
         );
       }
+      await widget.groupService.setGroupsForFriend(savedId, _selectedGroupIds);
       if (!mounted) {
         return;
       }
@@ -288,13 +335,11 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     await _refreshNotifications();
   }
 
-  /// Applies staged removals and copies after the friend row exists.
+  /// Applies staged removals and uploads after the friend row exists.
   ///
   /// Parameters:
-  /// - [friendId]: primary key for filenames.
-  /// - [previousPath]: last persisted absolute path, if any.
-  ///
-  /// Returns: future completing after filesystem + DB updates.
+  /// - [friendId]: primary key used in the upload filename hint.
+  /// - [previousPath]: last persisted URL or legacy disk path, if any.
   Future<void> _syncPhotoAfterSave({
     required int friendId,
     required String? previousPath,
@@ -326,7 +371,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           builder: (context) {
             return AlertDialog(
               title: const Text('Delete friend?'),
-              content: const Text('This removes their card and photo from your device.'),
+              content: const Text('This removes their card and clears their stored photo link.'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -371,7 +416,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
   Widget _buildPhotoPreview(ColorScheme scheme) {
     final letter = _nameController.text.trim().isEmpty
         ? '?'
-        : _nameController.text.trim().characters.first.toUpperCase();
+        : _nameController.text.trim().substring(0, 1).toUpperCase();
     final fallback = CircleAvatar(
       radius: 56,
       backgroundColor: scheme.surfaceContainerHighest,
@@ -403,6 +448,12 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     return fallback;
   }
 
+  /// Builds the friend editor: scrollable form fields and pinned save button.
+  ///
+  /// Parameters:
+  /// - [context]: build context.
+  ///
+  /// Returns: scaffold with loading, form, or error state.
   @override
   Widget build(BuildContext context) {
     if (!_initialized || _loading) {
@@ -535,6 +586,54 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                       ),
                     ],
                   ],
+                  const SizedBox(height: 20),
+                  Text(
+                    'Groups',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_allGroups.isEmpty)
+                    Text(
+                      'No groups yet. Use Add → New group on the friends list, then assign them here.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _allGroups.map((g) {
+                        final selected = _selectedGroupIds.contains(g.id);
+                        final accent = Color(g.colorArgb);
+                        return FilterChip(
+                          selected: selected,
+                          showCheckmark: true,
+                          checkmarkColor: scheme.onPrimary,
+                          selectedColor: accent.withValues(alpha: 0.28),
+                          side: BorderSide(
+                            color: selected ? accent : scheme.outline.withValues(alpha: 0.35),
+                          ),
+                          avatar: CircleAvatar(
+                            radius: 10,
+                            backgroundColor: accent,
+                            child: const SizedBox.shrink(),
+                          ),
+                          label: Text(g.name),
+                          onSelected: (v) {
+                            setState(() {
+                              if (v) {
+                                _selectedGroupIds.add(g.id);
+                              } else {
+                                _selectedGroupIds.remove(g.id);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _notesController,

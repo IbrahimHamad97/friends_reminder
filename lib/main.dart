@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/database.dart';
 import 'router/app_router.dart';
 import 'services/friend_service.dart';
+import 'services/group_service.dart';
 import 'services/notification_scheduler.dart';
 import 'services/theme_service.dart';
 import 'theme/app_theme.dart';
@@ -14,8 +16,14 @@ import 'widgets/splash_overlay.dart';
 /// Returns: does not return; schedules [runApp].
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: 'assets/config/cloudinary.env');
+  } catch (e, st) {
+    debugPrint('Could not load assets/config/cloudinary.env: $e\n$st');
+  }
   final database = AppDatabase();
   final friendService = FriendService(database);
+  final groupService = GroupService(database);
   final themeService = ThemeService();
   await themeService.load();
   try {
@@ -27,6 +35,7 @@ Future<void> main() async {
   runApp(
     FriendsReminderApp(
       friendService: friendService,
+      groupService: groupService,
       themeService: themeService,
     ),
   );
@@ -42,11 +51,15 @@ class FriendsReminderApp extends StatefulWidget {
   const FriendsReminderApp({
     super.key,
     required this.friendService,
+    required this.groupService,
     required this.themeService,
   });
 
   /// Friend data access shared across routes.
   final FriendService friendService;
+
+  /// Group data access shared across routes.
+  final GroupService groupService;
 
   /// Theme controller listened to by [MaterialApp].
   final ThemeService themeService;
@@ -60,6 +73,7 @@ class _FriendsReminderAppState extends State<FriendsReminderApp> with WidgetsBin
 
   late final GoRouter _router = createAppRouter(
     friendService: widget.friendService,
+    groupService: widget.groupService,
     themeService: widget.themeService,
     rootNavigatorKey: _rootNavigatorKey,
   );

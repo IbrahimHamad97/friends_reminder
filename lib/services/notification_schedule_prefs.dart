@@ -6,6 +6,9 @@ const String _kNotifHourKey = 'notification_reminder_hour';
 /// Minute component (0–59).
 const String _kNotifMinuteKey = 'notification_reminder_minute';
 
+/// After the Home tab shows the one-time notification prompt, this is set.
+const String _kHomeNotificationPromptDone = 'home_notification_permission_prompt_done';
+
 /// Reads/writes the wall-clock time used by [NotificationScheduler].
 ///
 /// Defaults to **09:00** if unset—notifications never fired at midnight unless you choose it.
@@ -36,5 +39,17 @@ class NotificationSchedulePrefs {
     final p = await SharedPreferences.getInstance();
     await p.setInt(_kNotifHourKey, hour.clamp(0, 23));
     await p.setInt(_kNotifMinuteKey, minute.clamp(0, 59));
+  }
+
+  /// Whether the Home tab has already shown the notification permission dialog.
+  Future<bool> wasHomeNotificationPromptCompleted() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getBool(_kHomeNotificationPromptDone) ?? false;
+  }
+
+  /// Marks the one-time Home notification prompt as finished (either button).
+  Future<void> markHomeNotificationPromptCompleted() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kHomeNotificationPromptDone, true);
   }
 }

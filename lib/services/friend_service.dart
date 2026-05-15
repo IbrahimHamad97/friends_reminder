@@ -47,6 +47,21 @@ class FriendService {
     return next.difference(DateTime(from.year, from.month, from.day)).inDays;
   }
 
+  /// Sorts [rows] in place by next upcoming birthday (same comparator as the main friends list).
+  ///
+  /// Parameters:
+  /// - [rows]: mutable list of friends to reorder.
+  /// - [from]: anchor date (usually today) for “next birthday” distance.
+  ///
+  /// Returns: nothing; [rows] is sorted in place.
+  void sortFriendsByUpcomingBirthday(List<FriendRow> rows, DateTime from) {
+    rows.sort((a, b) {
+      final na = _nextBirthdaySortKey(a.birthday, from);
+      final nb = _nextBirthdaySortKey(b.birthday, from);
+      return na.compareTo(nb);
+    });
+  }
+
   /// Loads a single friend by primary key.
   ///
   /// Parameters:
@@ -138,7 +153,7 @@ class FriendService {
         );
   }
 
-  /// Deletes a friend permanently and removes any stored photo file.
+  /// Deletes a friend permanently; clears local photo file if [photoPath] is not a remote URL.
   ///
   /// Parameters:
   /// - [id]: friend identifier.

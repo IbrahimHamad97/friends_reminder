@@ -40,8 +40,36 @@ class Friends extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// User-defined group (color, optional cover image, many friends).
+@DataClassName('GroupRow')
+class Groups extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get name => text().withLength(min: 1, max: 128)();
+
+  /// Flutter [Color.value] (ARGB).
+  IntColumn get colorArgb => integer()();
+
+  TextColumn get photoPath => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Many-to-many: which friends belong to which group.
+@DataClassName('FriendGroupLinkRow')
+class FriendGroupLinks extends Table {
+  IntColumn get friendId =>
+      integer().references(Friends, #id, onDelete: KeyAction.cascade)();
+
+  IntColumn get groupId =>
+      integer().references(Groups, #id, onDelete: KeyAction.cascade)();
+
+  @override
+  Set<Column<Object>> get primaryKey => {friendId, groupId};
+}
+
 /// Application SQLite database opened on the device documents directory.
-@DriftDatabase(tables: [Friends])
+@DriftDatabase(tables: [Friends, Groups, FriendGroupLinks])
 class AppDatabase extends _$AppDatabase {
   /// Creates the database, using [executor] when provided (mainly for tests).
   ///
@@ -52,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// Applies additive upgrades and column drops when opening older DB files.
   ///
@@ -72,6 +100,10 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.addColumn(friends, friends.lastContactedAt);
+          }
+          if (from < 4) {
+            await m.createTable(groups);
+            await m.createTable(friendGroupLinks);
           }
         },
       );

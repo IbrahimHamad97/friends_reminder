@@ -12,11 +12,13 @@ class FriendCard extends StatelessWidget {
   /// - [friend]: row to render.
   /// - [onTap]: called when the card is pressed.
   /// - [referenceDate]: "today" anchor for countdown copy.
+  /// - [groupAccentColors]: optional group color dots (usually `null` when shown under a group header).
   const FriendCard({
     super.key,
     required this.friend,
     required this.onTap,
     required this.referenceDate,
+    this.groupAccentColors,
   });
 
   /// Underlying friend row.
@@ -27,6 +29,9 @@ class FriendCard extends StatelessWidget {
 
   /// Date used for "in N days" labels.
   final DateTime referenceDate;
+
+  /// Optional group accent colors (small dots under the name; omit under group headers).
+  final List<Color>? groupAccentColors;
 
   /// One short line for the remind cadence.
   ///
@@ -100,6 +105,10 @@ class FriendCard extends StatelessWidget {
                               letterSpacing: -0.2,
                             ),
                       ),
+                      if (groupAccentColors != null && groupAccentColors!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _GroupColorDots(colors: groupAccentColors!),
+                      ],
                       if (isBirthday || isReachOutDay) ...[
                         const SizedBox(height: 8),
                         Wrap(
@@ -170,7 +179,85 @@ class FriendCard extends StatelessWidget {
   }
 }
 
+/// Small animated circles showing which groups a friend belongs to (used on ungrouped cards).
+class _GroupColorDots extends StatelessWidget {
+  /// Creates a row of up to six dots plus a `+N` overflow label.
+  ///
+  /// Parameters:
+  /// - [colors]: group accent colors (typically from [GroupService] data).
+  const _GroupColorDots({required this.colors});
+
+  /// Group colors in display order.
+  final List<Color> colors;
+
+  /// Builds the dot row with staggered opacity/scale tweens.
+  ///
+  /// Parameters:
+  /// - [context]: build context for theme colors.
+  ///
+  /// Returns: a [Row] of decorative indicators.
+  @override
+  Widget build(BuildContext context) {
+    const maxDots = 6;
+    final show = colors.length > maxDots ? colors.take(maxDots).toList() : colors;
+    final extra = colors.length - show.length;
+    return Row(
+      children: [
+        for (var i = 0; i < show.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(right: 5),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 280 + i * 40),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) {
+                return Opacity(
+                  opacity: t,
+                  child: Transform.scale(scale: 0.3 + 0.7 * t, child: child),
+                );
+              },
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: show[i],
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: show[i].withValues(alpha: 0.45),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (extra > 0)
+          Text(
+            '+$extra',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Pill-shaped label for birthday or check-in emphasis on [FriendCard].
 class _OccasionChip extends StatelessWidget {
+  /// Creates a chip with an icon and short label.
+  ///
+  /// Parameters:
+  /// - [icon]: leading glyph.
+  /// - [label]: short text (e.g. “Birthday”).
+  /// - [foreground]: text/icon color on the pill.
+  /// - [background]: pill fill color.
   const _OccasionChip({
     required this.icon,
     required this.label,
@@ -183,6 +270,12 @@ class _OccasionChip extends StatelessWidget {
   final Color foreground;
   final Color background;
 
+  /// Builds the rounded pill with icon + label.
+  ///
+  /// Parameters:
+  /// - [context]: build context for [TextTheme].
+  ///
+  /// Returns: padded decorated row.
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
