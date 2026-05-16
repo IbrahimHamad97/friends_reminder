@@ -12,6 +12,7 @@ void main() {
         name: 'Alex',
         birthday: DateTime(1990, 5, 5),
         reminderIntervalDays: 7,
+        closenessLevel: 'regular',
         createdAt: created,
       );
       expect(isReachOutRhythmDay(DateTime(2024, 1, 1), friend), isTrue);
@@ -26,6 +27,7 @@ void main() {
         name: 'Sam',
         birthday: DateTime(1992, 3, 3),
         reminderIntervalDays: 7,
+        closenessLevel: 'regular',
         createdAt: DateTime(2024, 1, 1),
         lastContactedAt: contacted,
       );

@@ -8,8 +8,11 @@ import '../services/friend_service.dart';
 import '../services/group_service.dart';
 import '../services/notification_scheduler.dart';
 import '../data/database.dart';
+import '../models/friend_level.dart';
+import '../models/friend_mood.dart';
 import '../utils/circular_photo_crop.dart';
 import '../utils/date_utils.dart';
+import '../utils/friend_phone.dart';
 import '../utils/validators.dart';
 import '../widgets/local_file_avatar.dart';
 
@@ -48,7 +51,12 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _notesController;
   late final TextEditingController _reminderDaysController;
+  late final TextEditingController _lastChatController;
+  late final TextEditingController _howWeMetController;
+  late final TextEditingController _phoneController;
   DateTime _birthday = DateTime(DateTime.now().year, 1, 1);
+  FriendLevel _closenessLevel = FriendLevel.regular;
+  FriendMood? _mood;
   bool _loading = false;
   bool _initialized = false;
 
@@ -80,6 +88,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     _nameController = TextEditingController();
     _notesController = TextEditingController();
     _reminderDaysController = TextEditingController(text: '14');
+    _lastChatController = TextEditingController();
+    _howWeMetController = TextEditingController();
+    _phoneController = TextEditingController();
     _bootstrap();
   }
 
@@ -120,6 +131,11 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     _birthday = row.birthday;
     _notesController.text = row.notes ?? '';
     _reminderDaysController.text = '${row.reminderIntervalDays}';
+    _lastChatController.text = row.lastChatSnippet ?? '';
+    _howWeMetController.text = row.howWeMet ?? '';
+    _phoneController.text = row.phoneNumber ?? '';
+    _closenessLevel = FriendLevel.fromStorage(row.closenessLevel);
+    _mood = FriendMood.fromStorage(row.moodTag);
     _storedPhotoPath = row.photoPath;
     _lastContactedAt = row.lastContactedAt;
     final gids = await widget.groupService.getGroupIdsForFriend(id);
@@ -139,6 +155,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     _nameController.dispose();
     _notesController.dispose();
     _reminderDaysController.dispose();
+    _lastChatController.dispose();
+    _howWeMetController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -243,6 +262,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     if (reminderDays == null || reminderDays < 1 || reminderDays > 365) {
       return;
     }
+    final lastChat = _optionalNotes(_lastChatController.text);
+    final howWeMet = _optionalNotes(_howWeMetController.text);
+    final phone = normalizeFriendPhoneInput(_phoneController.text);
 
     try {
       late final int savedId;
@@ -255,6 +277,11 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
+          closenessLevel: _closenessLevel.storageKey,
+          moodTag: _mood?.storageKey,
+          lastChatSnippet: lastChat,
+          howWeMet: howWeMet,
+          phoneNumber: phone,
         );
         await _syncPhotoAfterSave(
           friendId: savedId,
@@ -266,6 +293,11 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
+          closenessLevel: _closenessLevel.storageKey,
+          moodTag: _mood?.storageKey,
+          lastChatSnippet: lastChat,
+          howWeMet: howWeMet,
+          phoneNumber: phone,
         );
         await _syncPhotoAfterSave(
           friendId: savedId,
@@ -532,6 +564,114 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                       hintText: 'How you think of them',
                     ),
                     validator: validateFriendName,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Mobile number (optional)',
+                      hintText: '+1 555 123 4567',
+                      helperText: 'Enables Call and WhatsApp on their profile',
+                      prefixIcon: Icon(Icons.phone_outlined),
+                    ),
+                    validator: validateOptionalPhone,
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Closeness',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'How tight you are — shows on their card.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: FriendLevel.values.map((level) {
+                      final selected = _closenessLevel == level;
+                      final accent = level.accentColor(scheme);
+                      return FilterChip(
+                        selected: selected,
+                        showCheckmark: true,
+                        avatar: Icon(
+                          level.icon,
+                          size: 18,
+                          color: selected ? accent : scheme.onSurfaceVariant,
+                        ),
+                        label: Text(level.label),
+                        selectedColor: level.chipBackground(scheme),
+                        side: BorderSide(
+                          color: selected
+                              ? accent.withValues(alpha: 0.6)
+                              : scheme.outline.withValues(alpha: 0.35),
+                        ),
+                        onSelected: (_) {
+                          setState(() => _closenessLevel = level);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'How are they doing?',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilterChip(
+                        selected: _mood == null,
+                        label: const Text('No tag'),
+                        onSelected: (_) => setState(() => _mood = null),
+                      ),
+                      ...FriendMood.values.map((mood) {
+                        final selected = _mood == mood;
+                        return FilterChip(
+                          selected: selected,
+                          avatar: Icon(mood.icon, size: 18),
+                          label: Text(mood.label),
+                          selectedColor: mood.chipBackground(scheme),
+                          onSelected: (_) {
+                            setState(() => _mood = selected ? null : mood);
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _lastChatController,
+                    maxLines: 2,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Last conversation',
+                      hintText: 'e.g. new job, cat surgery, trip to Lisbon…',
+                      helperText: 'Short reminder of what you last talked about',
+                    ),
+                    validator: (v) => validateOptionalShortLine(v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _howWeMetController,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'How you met',
+                      hintText: 'e.g. college roommate, work 2019, climbing gym',
+                    ),
+                    validator: (v) => validateOptionalShortLine(v),
                   ),
                   const SizedBox(height: 16),
                   ListTile(

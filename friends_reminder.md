@@ -22,7 +22,7 @@ Private Flutter app for remembering **friend birthdays** and **check-in rhythms*
 ## Product overview
 
 - **Home**: Dashboard for the rest of the calendar year—upcoming birthdays and the next people due for a check-in (with human-readable “in N days” style copy).
-- **Friends**: Searchable list organized into **groups** (color, optional photo, members) plus an **“Not in a group”** section. Each person opens a full-screen **friend editor**.
+- **Friends**: Searchable list organized into **groups** (color, optional photo, members) plus **“Not in a group”**. Tap a person to open **friend detail**; from there use **Edit** for the full form.
 - **Calendar**: Month view of birthdays tied to stored friend data.
 - **Settings**: Theme mode, default reminder **time of day**, notification permission hints, and **JSON export** of friends (backup / portability).
 
@@ -50,7 +50,7 @@ Core loop: add people → get birthday + check-in reminders → optionally tap *
 
 ## Data model
 
-Defined in `lib/data/database.dart` (schema version **4**).
+Defined in `lib/data/database.dart` (schema version **6**).
 
 ### `Friends` → `FriendRow`
 
@@ -64,6 +64,11 @@ Defined in `lib/data/database.dart` (schema version **4**).
 | `reminderIntervalDays` | Check-in cadence (default 14)                                                                |
 | `photoPath`            | Optional **HTTPS** image URL (Cloudinary `secure_url`); legacy local paths are still shown if present until replaced |
 | `lastContactedAt`      | When user last marked “reached out”; anchors reminder rhythm with `lastContactedAt` when set |
+| `closenessLevel`       | `bestie` · `close` · `regular` (default) · `casual` — see `FriendLevel` in `lib/models/friend_level.dart` |
+| `moodTag`              | Optional: `good_place`, `busy`, `tough_time`, `celebrating` — see `FriendMood` |
+| `lastChatSnippet`      | Optional “last talked about…” line (shown on friend detail) |
+| `howWeMet`             | Optional one-liner (e.g. how you met) |
+| `phoneNumber`          | Optional mobile; detail screen offers **Call** and **WhatsApp** (`url_launcher`) |
 | `createdAt`            | Row creation (used as rhythm anchor when never contacted)                                    |
 
 
@@ -88,6 +93,8 @@ Composite primary key `(friendId, groupId)`: many-to-many membership. Ungrouped 
 - v2: reminder interval, photo, dropped legacy `description`
 - v3: `lastContactedAt`
 - v4: groups + link table
+- v5: `closenessLevel`, `moodTag`, `lastChatSnippet`, `howWeMet`
+- v6: `phoneNumber`
 
 ---
 
@@ -126,7 +133,7 @@ lib/
 
 **Initial route**: `/home`.
 
-**Full-screen routes** (root navigator, slide + fade): `/friends/new`, `/friends/:id/edit`, `/groups/new`, `/groups/:id/edit`.
+**Full-screen routes** (root navigator, slide + fade): `/friends/new`, `/friends/:id` (**FriendDetailScreen**), `/friends/:id/edit` (**FriendFormScreen**), `/groups/new`, `/groups/:id/edit`.
 
 ---
 
@@ -148,9 +155,13 @@ lib/
 - **Ungrouped** friends: section header + cards; optional **multi-group color dots** on cards when the person is in group(s) but shown in the ungrouped list (implementation uses link-derived color map).
 - **FAB “Add”** sheet: add friend or new group.
 
+### Friend detail (`lib/screens/friend_detail_screen.dart`)
+
+- Route **`/friends/:id`**: large photo, name, closeness + mood chips, optional **Call** / **WhatsApp** when `phoneNumber` is set, birthday/cadence and “reached out” summary, **groups**, how you met, last conversation, notes, **Reached out today** (and clear rhythm). **Edit** opens the form.
+
 ### Friend form (`lib/screens/friend_form_screen.dart`)
 
-- Name, birthday, notes, photo (gallery → **circular crop** sheet → client compress → **Cloudinary upload** on save), reminder interval, **Reached out** / last contacted, **group membership** multi-select.
+- Name, optional **mobile number**, birthday, **closeness** (Bestie / Close / Regular / Acquaintance), optional **mood** tag, **last conversation** + **how you met** lines, notes, photo (gallery → **circular crop** → Cloudinary), reminder interval, **Reached out**, **group membership** multi-select.
 
 ### Group form (`lib/screens/group_form_screen.dart`)
 
@@ -158,7 +169,7 @@ lib/
 
 ### Friend cards (`lib/widgets/friend_card.dart`)
 
-- Avatar, name, birthday line, cadence line, optional notes preview, chips for **birthday today** and **check-in rhythm day**, chevron; respects `groupAccentColors` when provided.
+- Sparse row: **closeness as a left accent strip only** (no level/mood chips); avatar, name, optional **group color dots** (ungrouped section), **Birthday** / **Check-in day** chips when applicable, birthday line + **cadence**. Rich context stays on **friend detail**.
 
 ### Calendar (`lib/screens/calendar_screen.dart`)
 
@@ -231,9 +242,10 @@ This section captures **directional** enhancements—not committed work. Priorit
 
 ### Richer friend cards & context
 
-- **Mood / status tags** (e.g. “going through a lot”, “good place”) so you recall emotional context before texting—would need new fields or a tag system + UI on `FriendCard` and the form.
-- **Last conversation log** (short bullet: “cat, job stress, Portugal trip”) as a structured field or append-only mini journal—not the same as long `notes`; could power smarter reminders.
-- **“How we met”** sentimental field (optional, single line or paragraph).
+- ~~**Mood / status tags**~~ — shipped (`FriendMood`, form chips, card chip).
+- ~~**Last conversation log**~~ — shipped as `lastChatSnippet` (separate from long `notes`).
+- ~~**“How we met”**~~ — shipped as `howWeMet`.
+- **Closeness levels** — shipped (`FriendLevel`: Bestie, Close, Regular, Acquaintance).
 - **Anniversaries beyond birthdays**: friendiversary, met-on date, custom yearly events—new table or JSON column + calendar integration.
 
 ### Check-ins that feel more alive

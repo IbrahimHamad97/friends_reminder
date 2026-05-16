@@ -7,6 +7,36 @@ The living product/architecture overview stays in **`friends_reminder.md`**.
 
 ---
 
+## 2026-05-10 — Optional phone + Call / WhatsApp on friend detail
+
+**Summary:** Friends can store an optional **mobile number**. On **friend detail**, **Call** opens the dialer (`tel:`) and **WhatsApp** opens `wa.me` (with `whatsapp://` fallback). Form field with validation; JSON export includes `phoneNumber`. Schema **v6**.
+
+**Primary code:** `lib/utils/friend_phone.dart`, `lib/screens/friend_detail_screen.dart`, `lib/screens/friend_form_screen.dart`, `lib/data/database.dart`, `android/app/src/main/AndroidManifest.xml` (package visibility for tel/WhatsApp).
+
+**Dependencies:** `url_launcher`.
+
+---
+
+## 2026-05-10 — Friend detail screen + calmer list cards
+
+**Summary:** New **`/friends/:id`** `FriendDetailScreen` holds closeness/mood chips, how you met, last conversation, notes, groups, and **Reached out** actions. `FriendCard` is slim again: accent strip, name, optional group dots, occasion chips, birthday + cadence only. Home, calendar, and friends list open **detail** first; **Edit** still goes to the form.
+
+**Primary code:** `lib/screens/friend_detail_screen.dart`, `lib/router/app_router.dart`, `lib/widgets/friend_card.dart`, `lib/services/group_service.dart` (`getGroupsForFriend`).
+
+---
+
+## 2026-05-10 — Richer friend cards + closeness levels
+
+**Summary:** Friends gain **closeness** (Bestie, Close friend, Regular, Acquaintance), optional **mood** tags, a **last conversation** snippet, and **how you met** — all editable in the friend form and shown on richer `FriendCard` rows (level accent bar, chips, quote box).
+
+**Schema:** v5 — `closenessLevel`, `moodTag`, `lastChatSnippet`, `howWeMet` on `Friends`.
+
+**Primary code:** `lib/models/friend_level.dart`, `lib/models/friend_mood.dart`, `lib/widgets/friend_card.dart`, `lib/screens/friend_form_screen.dart`, `lib/data/database.dart`, `lib/utils/friend_search.dart`.
+
+**Export:** JSON backup `version` 2 includes the new fields.
+
+---
+
 ## 2026-05-10 — Avatar load errors + Home notification prompt
 
 **Summary:** Friend/group photo widgets fall back to the existing **letter** (or group **icon**) preview when a **URL or file fails to decode**. OS notification permission is **no longer requested at cold start**; the **Home** tab shows a **one-time** dialog — **Allow** requests permissions and jumps to **Settings**; **Not now** shows a snackbar and Settings documents how to enable later.

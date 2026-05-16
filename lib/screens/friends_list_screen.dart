@@ -347,8 +347,7 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                           referenceDate: today,
                           onEditGroup: () =>
                               context.push('/groups/${g.id}/edit'),
-                          onFriendTap: (f) =>
-                              context.push('/friends/${f.id}/edit'),
+                          onFriendTap: (f) => context.push('/friends/${f.id}'),
                         ),
                       ),
                     );
@@ -389,8 +388,7 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                                 friend: friend,
                                 referenceDate: today,
                                 groupAccentColors: colorMap[friend.id],
-                                onTap: () =>
-                                    context.push('/friends/${friend.id}/edit'),
+                                onTap: () => context.push('/friends/${friend.id}'),
                               );
                             },
                             childCount: ungrouped.length,

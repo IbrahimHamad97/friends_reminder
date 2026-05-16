@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/calendar_screen.dart';
+import '../screens/friend_detail_screen.dart';
 import '../screens/friend_form_screen.dart';
 import '../screens/friends_list_screen.dart';
 import '../screens/home_screen.dart';
@@ -21,7 +22,7 @@ import '../widgets/app_shell.dart';
 /// - `/settings` — theme, reminders, export.
 ///
 /// Full-screen routes (slide + fade transition) use the root navigator:
-/// - `/friends/new`, `/friends/:id/edit` — friend form (requires [groupService]).
+/// - `/friends/new`, `/friends/:id` (detail), `/friends/:id/edit` (form).
 /// - `/groups/new`, `/groups/:id/edit` — group form.
 ///
 /// Parameters:
@@ -115,6 +116,22 @@ GoRouter createAppRouter({
           return _slideUpPage<void>(
             key: state.pageKey,
             child: FriendFormScreen(
+              friendService: friendService,
+              groupService: groupService,
+              friendId: id,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: '/friends/:id',
+        name: 'friend-detail',
+        pageBuilder: (context, state) {
+          final id = int.parse(state.pathParameters['id']!);
+          return _slideUpPage<void>(
+            key: state.pageKey,
+            child: FriendDetailScreen(
               friendService: friendService,
               groupService: groupService,
               friendId: id,

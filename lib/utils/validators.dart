@@ -34,3 +34,31 @@ String? validateReminderIntervalDays(String? value) {
   }
   return null;
 }
+
+/// Optional mobile number (7–15 digits after stripping spaces/symbols).
+String? validateOptionalPhone(String? value) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  final digits = trimmed.replaceAll(RegExp(r'\D'), '');
+  if (digits.length < 7) {
+    return 'Enter at least 7 digits';
+  }
+  if (digits.length > 15) {
+    return 'Number is too long';
+  }
+  return null;
+}
+
+/// Optional single-line context fields (last chat, how we met).
+String? validateOptionalShortLine(String? value, {int maxLength = 200}) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  if (trimmed.length > maxLength) {
+    return 'Keep it under $maxLength characters';
+  }
+  return null;
+}

@@ -92,7 +92,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   sliver: SliverToBoxAdapter(
                     child: _UpcomingSection(
                       entries: upcoming,
-                      onOpenFriend: (id) => context.push('/friends/$id/edit'),
+                      onOpenFriend: (id) => context.push('/friends/$id'),
                       labelForDays: _horizonLabel,
                     ),
                   ),
@@ -259,7 +259,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             ),
                             subtitle: Text(formatMonthDay(friend.birthday)),
                             trailing: const Icon(Icons.edit_outlined),
-                            onTap: () => context.push('/friends/${friend.id}/edit'),
+                            onTap: () => context.push('/friends/${friend.id}'),
                           );
                         },
                         childCount: selectedFriends.length,

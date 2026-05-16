@@ -87,6 +87,11 @@ class FriendService {
     required DateTime birthday,
     String? notes,
     int reminderIntervalDays = 14,
+    String closenessLevel = 'regular',
+    String? moodTag,
+    String? lastChatSnippet,
+    String? howWeMet,
+    String? phoneNumber,
   }) {
     return _database.into(_database.friends).insert(
           FriendsCompanion.insert(
@@ -94,6 +99,11 @@ class FriendService {
             birthday: birthday,
             notes: Value(notes),
             reminderIntervalDays: Value(reminderIntervalDays),
+            closenessLevel: Value(closenessLevel),
+            moodTag: Value(moodTag),
+            lastChatSnippet: Value(lastChatSnippet),
+            howWeMet: Value(howWeMet),
+            phoneNumber: Value(phoneNumber),
           ),
         );
   }
@@ -114,6 +124,11 @@ class FriendService {
     required DateTime birthday,
     String? notes,
     required int reminderIntervalDays,
+    required String closenessLevel,
+    String? moodTag,
+    String? lastChatSnippet,
+    String? howWeMet,
+    String? phoneNumber,
   }) {
     return (_database.update(_database.friends)..where((t) => t.id.equals(id))).write(
           FriendsCompanion(
@@ -121,6 +136,11 @@ class FriendService {
             birthday: Value(birthday),
             notes: Value(notes),
             reminderIntervalDays: Value(reminderIntervalDays),
+            closenessLevel: Value(closenessLevel),
+            moodTag: Value(moodTag),
+            lastChatSnippet: Value(lastChatSnippet),
+            howWeMet: Value(howWeMet),
+            phoneNumber: Value(phoneNumber),
           ),
         );
   }

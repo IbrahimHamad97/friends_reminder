@@ -56,6 +56,38 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
   late final GeneratedColumn<DateTime> lastContactedAt =
       GeneratedColumn<DateTime>('last_contacted_at', aliasedName, true,
           type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _closenessLevelMeta =
+      const VerificationMeta('closenessLevel');
+  @override
+  late final GeneratedColumn<String> closenessLevel = GeneratedColumn<String>(
+      'closeness_level', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('regular'));
+  static const VerificationMeta _moodTagMeta =
+      const VerificationMeta('moodTag');
+  @override
+  late final GeneratedColumn<String> moodTag = GeneratedColumn<String>(
+      'mood_tag', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastChatSnippetMeta =
+      const VerificationMeta('lastChatSnippet');
+  @override
+  late final GeneratedColumn<String> lastChatSnippet = GeneratedColumn<String>(
+      'last_chat_snippet', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _howWeMetMeta =
+      const VerificationMeta('howWeMet');
+  @override
+  late final GeneratedColumn<String> howWeMet = GeneratedColumn<String>(
+      'how_we_met', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _phoneNumberMeta =
+      const VerificationMeta('phoneNumber');
+  @override
+  late final GeneratedColumn<String> phoneNumber = GeneratedColumn<String>(
+      'phone_number', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -73,6 +105,11 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
         reminderIntervalDays,
         photoPath,
         lastContactedAt,
+        closenessLevel,
+        moodTag,
+        lastChatSnippet,
+        howWeMet,
+        phoneNumber,
         createdAt
       ];
   @override
@@ -120,6 +157,32 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           lastContactedAt.isAcceptableOrUnknown(
               data['last_contacted_at']!, _lastContactedAtMeta));
     }
+    if (data.containsKey('closeness_level')) {
+      context.handle(
+          _closenessLevelMeta,
+          closenessLevel.isAcceptableOrUnknown(
+              data['closeness_level']!, _closenessLevelMeta));
+    }
+    if (data.containsKey('mood_tag')) {
+      context.handle(_moodTagMeta,
+          moodTag.isAcceptableOrUnknown(data['mood_tag']!, _moodTagMeta));
+    }
+    if (data.containsKey('last_chat_snippet')) {
+      context.handle(
+          _lastChatSnippetMeta,
+          lastChatSnippet.isAcceptableOrUnknown(
+              data['last_chat_snippet']!, _lastChatSnippetMeta));
+    }
+    if (data.containsKey('how_we_met')) {
+      context.handle(_howWeMetMeta,
+          howWeMet.isAcceptableOrUnknown(data['how_we_met']!, _howWeMetMeta));
+    }
+    if (data.containsKey('phone_number')) {
+      context.handle(
+          _phoneNumberMeta,
+          phoneNumber.isAcceptableOrUnknown(
+              data['phone_number']!, _phoneNumberMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -147,6 +210,16 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}photo_path']),
       lastContactedAt: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}last_contacted_at']),
+      closenessLevel: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}closeness_level'])!,
+      moodTag: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}mood_tag']),
+      lastChatSnippet: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}last_chat_snippet']),
+      howWeMet: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}how_we_met']),
+      phoneNumber: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}phone_number']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
     );
@@ -180,6 +253,21 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
   /// When you last tapped "Reached out"; resets the check-in reminder rhythm.
   final DateTime? lastContactedAt;
 
+  /// Closeness tier: `bestie`, `close`, `regular`, `casual` — see [FriendLevel].
+  final String closenessLevel;
+
+  /// Optional mood tag: `good_place`, `busy`, `tough_time`, `celebrating`.
+  final String? moodTag;
+
+  /// Short “last talked about…” line for cards (separate from long [notes]).
+  final String? lastChatSnippet;
+
+  /// Optional one-liner, e.g. how you met.
+  final String? howWeMet;
+
+  /// Optional mobile number (digits / + for display; used for call + WhatsApp on detail).
+  final String? phoneNumber;
+
   /// When this row was first created (UTC).
   final DateTime createdAt;
   const FriendRow(
@@ -190,6 +278,11 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       required this.reminderIntervalDays,
       this.photoPath,
       this.lastContactedAt,
+      required this.closenessLevel,
+      this.moodTag,
+      this.lastChatSnippet,
+      this.howWeMet,
+      this.phoneNumber,
       required this.createdAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -206,6 +299,19 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
     }
     if (!nullToAbsent || lastContactedAt != null) {
       map['last_contacted_at'] = Variable<DateTime>(lastContactedAt);
+    }
+    map['closeness_level'] = Variable<String>(closenessLevel);
+    if (!nullToAbsent || moodTag != null) {
+      map['mood_tag'] = Variable<String>(moodTag);
+    }
+    if (!nullToAbsent || lastChatSnippet != null) {
+      map['last_chat_snippet'] = Variable<String>(lastChatSnippet);
+    }
+    if (!nullToAbsent || howWeMet != null) {
+      map['how_we_met'] = Variable<String>(howWeMet);
+    }
+    if (!nullToAbsent || phoneNumber != null) {
+      map['phone_number'] = Variable<String>(phoneNumber);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -225,6 +331,19 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       lastContactedAt: lastContactedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastContactedAt),
+      closenessLevel: Value(closenessLevel),
+      moodTag: moodTag == null && nullToAbsent
+          ? const Value.absent()
+          : Value(moodTag),
+      lastChatSnippet: lastChatSnippet == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastChatSnippet),
+      howWeMet: howWeMet == null && nullToAbsent
+          ? const Value.absent()
+          : Value(howWeMet),
+      phoneNumber: phoneNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phoneNumber),
       createdAt: Value(createdAt),
     );
   }
@@ -241,6 +360,11 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           serializer.fromJson<int>(json['reminderIntervalDays']),
       photoPath: serializer.fromJson<String?>(json['photoPath']),
       lastContactedAt: serializer.fromJson<DateTime?>(json['lastContactedAt']),
+      closenessLevel: serializer.fromJson<String>(json['closenessLevel']),
+      moodTag: serializer.fromJson<String?>(json['moodTag']),
+      lastChatSnippet: serializer.fromJson<String?>(json['lastChatSnippet']),
+      howWeMet: serializer.fromJson<String?>(json['howWeMet']),
+      phoneNumber: serializer.fromJson<String?>(json['phoneNumber']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -255,6 +379,11 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       'reminderIntervalDays': serializer.toJson<int>(reminderIntervalDays),
       'photoPath': serializer.toJson<String?>(photoPath),
       'lastContactedAt': serializer.toJson<DateTime?>(lastContactedAt),
+      'closenessLevel': serializer.toJson<String>(closenessLevel),
+      'moodTag': serializer.toJson<String?>(moodTag),
+      'lastChatSnippet': serializer.toJson<String?>(lastChatSnippet),
+      'howWeMet': serializer.toJson<String?>(howWeMet),
+      'phoneNumber': serializer.toJson<String?>(phoneNumber),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -267,6 +396,11 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           int? reminderIntervalDays,
           Value<String?> photoPath = const Value.absent(),
           Value<DateTime?> lastContactedAt = const Value.absent(),
+          String? closenessLevel,
+          Value<String?> moodTag = const Value.absent(),
+          Value<String?> lastChatSnippet = const Value.absent(),
+          Value<String?> howWeMet = const Value.absent(),
+          Value<String?> phoneNumber = const Value.absent(),
           DateTime? createdAt}) =>
       FriendRow(
         id: id ?? this.id,
@@ -278,6 +412,13 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
         lastContactedAt: lastContactedAt.present
             ? lastContactedAt.value
             : this.lastContactedAt,
+        closenessLevel: closenessLevel ?? this.closenessLevel,
+        moodTag: moodTag.present ? moodTag.value : this.moodTag,
+        lastChatSnippet: lastChatSnippet.present
+            ? lastChatSnippet.value
+            : this.lastChatSnippet,
+        howWeMet: howWeMet.present ? howWeMet.value : this.howWeMet,
+        phoneNumber: phoneNumber.present ? phoneNumber.value : this.phoneNumber,
         createdAt: createdAt ?? this.createdAt,
       );
   FriendRow copyWithCompanion(FriendsCompanion data) {
@@ -293,6 +434,16 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       lastContactedAt: data.lastContactedAt.present
           ? data.lastContactedAt.value
           : this.lastContactedAt,
+      closenessLevel: data.closenessLevel.present
+          ? data.closenessLevel.value
+          : this.closenessLevel,
+      moodTag: data.moodTag.present ? data.moodTag.value : this.moodTag,
+      lastChatSnippet: data.lastChatSnippet.present
+          ? data.lastChatSnippet.value
+          : this.lastChatSnippet,
+      howWeMet: data.howWeMet.present ? data.howWeMet.value : this.howWeMet,
+      phoneNumber:
+          data.phoneNumber.present ? data.phoneNumber.value : this.phoneNumber,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -307,14 +458,31 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           ..write('reminderIntervalDays: $reminderIntervalDays, ')
           ..write('photoPath: $photoPath, ')
           ..write('lastContactedAt: $lastContactedAt, ')
+          ..write('closenessLevel: $closenessLevel, ')
+          ..write('moodTag: $moodTag, ')
+          ..write('lastChatSnippet: $lastChatSnippet, ')
+          ..write('howWeMet: $howWeMet, ')
+          ..write('phoneNumber: $phoneNumber, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, birthday, notes,
-      reminderIntervalDays, photoPath, lastContactedAt, createdAt);
+  int get hashCode => Object.hash(
+      id,
+      name,
+      birthday,
+      notes,
+      reminderIntervalDays,
+      photoPath,
+      lastContactedAt,
+      closenessLevel,
+      moodTag,
+      lastChatSnippet,
+      howWeMet,
+      phoneNumber,
+      createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -326,6 +494,11 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           other.reminderIntervalDays == this.reminderIntervalDays &&
           other.photoPath == this.photoPath &&
           other.lastContactedAt == this.lastContactedAt &&
+          other.closenessLevel == this.closenessLevel &&
+          other.moodTag == this.moodTag &&
+          other.lastChatSnippet == this.lastChatSnippet &&
+          other.howWeMet == this.howWeMet &&
+          other.phoneNumber == this.phoneNumber &&
           other.createdAt == this.createdAt);
 }
 
@@ -337,6 +510,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
   final Value<int> reminderIntervalDays;
   final Value<String?> photoPath;
   final Value<DateTime?> lastContactedAt;
+  final Value<String> closenessLevel;
+  final Value<String?> moodTag;
+  final Value<String?> lastChatSnippet;
+  final Value<String?> howWeMet;
+  final Value<String?> phoneNumber;
   final Value<DateTime> createdAt;
   const FriendsCompanion({
     this.id = const Value.absent(),
@@ -346,6 +524,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     this.reminderIntervalDays = const Value.absent(),
     this.photoPath = const Value.absent(),
     this.lastContactedAt = const Value.absent(),
+    this.closenessLevel = const Value.absent(),
+    this.moodTag = const Value.absent(),
+    this.lastChatSnippet = const Value.absent(),
+    this.howWeMet = const Value.absent(),
+    this.phoneNumber = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   FriendsCompanion.insert({
@@ -356,6 +539,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     this.reminderIntervalDays = const Value.absent(),
     this.photoPath = const Value.absent(),
     this.lastContactedAt = const Value.absent(),
+    this.closenessLevel = const Value.absent(),
+    this.moodTag = const Value.absent(),
+    this.lastChatSnippet = const Value.absent(),
+    this.howWeMet = const Value.absent(),
+    this.phoneNumber = const Value.absent(),
     this.createdAt = const Value.absent(),
   })  : name = Value(name),
         birthday = Value(birthday);
@@ -367,6 +555,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     Expression<int>? reminderIntervalDays,
     Expression<String>? photoPath,
     Expression<DateTime>? lastContactedAt,
+    Expression<String>? closenessLevel,
+    Expression<String>? moodTag,
+    Expression<String>? lastChatSnippet,
+    Expression<String>? howWeMet,
+    Expression<String>? phoneNumber,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -378,6 +571,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
         'reminder_interval_days': reminderIntervalDays,
       if (photoPath != null) 'photo_path': photoPath,
       if (lastContactedAt != null) 'last_contacted_at': lastContactedAt,
+      if (closenessLevel != null) 'closeness_level': closenessLevel,
+      if (moodTag != null) 'mood_tag': moodTag,
+      if (lastChatSnippet != null) 'last_chat_snippet': lastChatSnippet,
+      if (howWeMet != null) 'how_we_met': howWeMet,
+      if (phoneNumber != null) 'phone_number': phoneNumber,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -390,6 +588,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       Value<int>? reminderIntervalDays,
       Value<String?>? photoPath,
       Value<DateTime?>? lastContactedAt,
+      Value<String>? closenessLevel,
+      Value<String?>? moodTag,
+      Value<String?>? lastChatSnippet,
+      Value<String?>? howWeMet,
+      Value<String?>? phoneNumber,
       Value<DateTime>? createdAt}) {
     return FriendsCompanion(
       id: id ?? this.id,
@@ -399,6 +602,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       reminderIntervalDays: reminderIntervalDays ?? this.reminderIntervalDays,
       photoPath: photoPath ?? this.photoPath,
       lastContactedAt: lastContactedAt ?? this.lastContactedAt,
+      closenessLevel: closenessLevel ?? this.closenessLevel,
+      moodTag: moodTag ?? this.moodTag,
+      lastChatSnippet: lastChatSnippet ?? this.lastChatSnippet,
+      howWeMet: howWeMet ?? this.howWeMet,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -427,6 +635,21 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     if (lastContactedAt.present) {
       map['last_contacted_at'] = Variable<DateTime>(lastContactedAt.value);
     }
+    if (closenessLevel.present) {
+      map['closeness_level'] = Variable<String>(closenessLevel.value);
+    }
+    if (moodTag.present) {
+      map['mood_tag'] = Variable<String>(moodTag.value);
+    }
+    if (lastChatSnippet.present) {
+      map['last_chat_snippet'] = Variable<String>(lastChatSnippet.value);
+    }
+    if (howWeMet.present) {
+      map['how_we_met'] = Variable<String>(howWeMet.value);
+    }
+    if (phoneNumber.present) {
+      map['phone_number'] = Variable<String>(phoneNumber.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -443,6 +666,11 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
           ..write('reminderIntervalDays: $reminderIntervalDays, ')
           ..write('photoPath: $photoPath, ')
           ..write('lastContactedAt: $lastContactedAt, ')
+          ..write('closenessLevel: $closenessLevel, ')
+          ..write('moodTag: $moodTag, ')
+          ..write('lastChatSnippet: $lastChatSnippet, ')
+          ..write('howWeMet: $howWeMet, ')
+          ..write('phoneNumber: $phoneNumber, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -993,6 +1221,11 @@ typedef $$FriendsTableCreateCompanionBuilder = FriendsCompanion Function({
   Value<int> reminderIntervalDays,
   Value<String?> photoPath,
   Value<DateTime?> lastContactedAt,
+  Value<String> closenessLevel,
+  Value<String?> moodTag,
+  Value<String?> lastChatSnippet,
+  Value<String?> howWeMet,
+  Value<String?> phoneNumber,
   Value<DateTime> createdAt,
 });
 typedef $$FriendsTableUpdateCompanionBuilder = FriendsCompanion Function({
@@ -1003,6 +1236,11 @@ typedef $$FriendsTableUpdateCompanionBuilder = FriendsCompanion Function({
   Value<int> reminderIntervalDays,
   Value<String?> photoPath,
   Value<DateTime?> lastContactedAt,
+  Value<String> closenessLevel,
+  Value<String?> moodTag,
+  Value<String?> lastChatSnippet,
+  Value<String?> howWeMet,
+  Value<String?> phoneNumber,
   Value<DateTime> createdAt,
 });
 
@@ -1059,6 +1297,23 @@ class $$FriendsTableFilterComposer
   ColumnFilters<DateTime> get lastContactedAt => $composableBuilder(
       column: $table.lastContactedAt,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get closenessLevel => $composableBuilder(
+      column: $table.closenessLevel,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get moodTag => $composableBuilder(
+      column: $table.moodTag, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastChatSnippet => $composableBuilder(
+      column: $table.lastChatSnippet,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get howWeMet => $composableBuilder(
+      column: $table.howWeMet, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get phoneNumber => $composableBuilder(
+      column: $table.phoneNumber, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -1117,6 +1372,23 @@ class $$FriendsTableOrderingComposer
       column: $table.lastContactedAt,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get closenessLevel => $composableBuilder(
+      column: $table.closenessLevel,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get moodTag => $composableBuilder(
+      column: $table.moodTag, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastChatSnippet => $composableBuilder(
+      column: $table.lastChatSnippet,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get howWeMet => $composableBuilder(
+      column: $table.howWeMet, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get phoneNumber => $composableBuilder(
+      column: $table.phoneNumber, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 }
@@ -1150,6 +1422,21 @@ class $$FriendsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastContactedAt => $composableBuilder(
       column: $table.lastContactedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get closenessLevel => $composableBuilder(
+      column: $table.closenessLevel, builder: (column) => column);
+
+  GeneratedColumn<String> get moodTag =>
+      $composableBuilder(column: $table.moodTag, builder: (column) => column);
+
+  GeneratedColumn<String> get lastChatSnippet => $composableBuilder(
+      column: $table.lastChatSnippet, builder: (column) => column);
+
+  GeneratedColumn<String> get howWeMet =>
+      $composableBuilder(column: $table.howWeMet, builder: (column) => column);
+
+  GeneratedColumn<String> get phoneNumber => $composableBuilder(
+      column: $table.phoneNumber, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -1206,6 +1493,11 @@ class $$FriendsTableTableManager extends RootTableManager<
             Value<int> reminderIntervalDays = const Value.absent(),
             Value<String?> photoPath = const Value.absent(),
             Value<DateTime?> lastContactedAt = const Value.absent(),
+            Value<String> closenessLevel = const Value.absent(),
+            Value<String?> moodTag = const Value.absent(),
+            Value<String?> lastChatSnippet = const Value.absent(),
+            Value<String?> howWeMet = const Value.absent(),
+            Value<String?> phoneNumber = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
           }) =>
               FriendsCompanion(
@@ -1216,6 +1508,11 @@ class $$FriendsTableTableManager extends RootTableManager<
             reminderIntervalDays: reminderIntervalDays,
             photoPath: photoPath,
             lastContactedAt: lastContactedAt,
+            closenessLevel: closenessLevel,
+            moodTag: moodTag,
+            lastChatSnippet: lastChatSnippet,
+            howWeMet: howWeMet,
+            phoneNumber: phoneNumber,
             createdAt: createdAt,
           ),
           createCompanionCallback: ({
@@ -1226,6 +1523,11 @@ class $$FriendsTableTableManager extends RootTableManager<
             Value<int> reminderIntervalDays = const Value.absent(),
             Value<String?> photoPath = const Value.absent(),
             Value<DateTime?> lastContactedAt = const Value.absent(),
+            Value<String> closenessLevel = const Value.absent(),
+            Value<String?> moodTag = const Value.absent(),
+            Value<String?> lastChatSnippet = const Value.absent(),
+            Value<String?> howWeMet = const Value.absent(),
+            Value<String?> phoneNumber = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
           }) =>
               FriendsCompanion.insert(
@@ -1236,6 +1538,11 @@ class $$FriendsTableTableManager extends RootTableManager<
             reminderIntervalDays: reminderIntervalDays,
             photoPath: photoPath,
             lastContactedAt: lastContactedAt,
+            closenessLevel: closenessLevel,
+            moodTag: moodTag,
+            lastChatSnippet: lastChatSnippet,
+            howWeMet: howWeMet,
+            phoneNumber: phoneNumber,
             createdAt: createdAt,
           ),
           withReferenceMapper: (p0) => p0

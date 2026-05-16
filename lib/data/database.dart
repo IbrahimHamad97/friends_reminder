@@ -36,6 +36,22 @@ class Friends extends Table {
   /// When you last tapped "Reached out"; resets the check-in reminder rhythm.
   DateTimeColumn get lastContactedAt => dateTime().nullable()();
 
+  /// Closeness tier: `bestie`, `close`, `regular`, `casual` — see [FriendLevel].
+  TextColumn get closenessLevel =>
+      text().withDefault(const Constant('regular'))();
+
+  /// Optional mood tag: `good_place`, `busy`, `tough_time`, `celebrating`.
+  TextColumn get moodTag => text().nullable()();
+
+  /// Short “last talked about…” line for cards (separate from long [notes]).
+  TextColumn get lastChatSnippet => text().nullable()();
+
+  /// Optional one-liner, e.g. how you met.
+  TextColumn get howWeMet => text().nullable()();
+
+  /// Optional mobile number (digits / + for display; used for call + WhatsApp on detail).
+  TextColumn get phoneNumber => text().nullable()();
+
   /// When this row was first created (UTC).
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -80,7 +96,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
 
   /// Applies additive upgrades and column drops when opening older DB files.
   ///
@@ -104,6 +120,15 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.createTable(groups);
             await m.createTable(friendGroupLinks);
+          }
+          if (from < 5) {
+            await m.addColumn(friends, friends.closenessLevel);
+            await m.addColumn(friends, friends.moodTag);
+            await m.addColumn(friends, friends.lastChatSnippet);
+            await m.addColumn(friends, friends.howWeMet);
+          }
+          if (from < 6) {
+            await m.addColumn(friends, friends.phoneNumber);
           }
         },
       );

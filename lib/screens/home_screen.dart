@@ -215,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 friend: item.friend,
                                 subtitle: label,
                                 onTap: () => context
-                                    .push('/friends/${item.friend.id}/edit'),
+                                    .push('/friends/${item.friend.id}'),
                               );
                             },
                           ),
@@ -274,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             clipBehavior: Clip.antiAlias,
                             child: InkWell(
                               onTap: () =>
-                                  context.push('/friends/${b.friend.id}/edit'),
+                                  context.push('/friends/${b.friend.id}'),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 14, vertical: 12),

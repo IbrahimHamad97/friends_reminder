@@ -269,6 +269,16 @@ class GroupService {
     return rows.map((e) => e.groupId).toSet();
   }
 
+  /// Groups a friend belongs to, in the same order as [getAllGroupsOrdered].
+  Future<List<GroupRow>> getGroupsForFriend(int friendId) async {
+    final ids = await getGroupIdsForFriend(friendId);
+    if (ids.isEmpty) {
+      return [];
+    }
+    final all = await getAllGroupsOrdered();
+    return all.where((g) => ids.contains(g.id)).toList();
+  }
+
   /// Watches the entire friend–group link table (for rebuilding grouped UI).
   ///
   /// Returns: stream of all [FriendGroupLinkRow] rows.

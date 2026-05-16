@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../models/friend_level.dart';
 import '../utils/date_utils.dart';
 import 'friend_avatar.dart';
 
-/// Compact row-style card for one [FriendRow]—minimal chrome, easy to scan.
+/// Lightweight list row: avatar, name, birthday + cadence, optional group dots and occasion chips.
+///
+/// Closeness shows only as a slim **left accent** strip; mood, last chat, how you met, and
+/// full notes live on [FriendDetailScreen] (`/friends/:id`).
 class FriendCard extends StatelessWidget {
   /// Creates a tappable card for [friend].
   ///
   /// Parameters:
   /// - [friend]: row to render.
-  /// - [onTap]: called when the card is pressed.
+  /// - [onTap]: called when the card is pressed (open detail).
   /// - [referenceDate]: "today" anchor for countdown copy.
   /// - [groupAccentColors]: optional group color dots (usually `null` when shown under a group header).
   const FriendCard({
@@ -24,7 +28,7 @@ class FriendCard extends StatelessWidget {
   /// Underlying friend row.
   final FriendRow friend;
 
-  /// Tap handler (navigate to detail/edit).
+  /// Tap handler (navigate to detail).
   final VoidCallback onTap;
 
   /// Date used for "in N days" labels.
@@ -49,26 +53,29 @@ class FriendCard extends StatelessWidget {
     return 'Check-in every $days days';
   }
 
-  /// Builds a flat card: avatar, name, date line, cadence, optional notes.
+  /// Builds the compact card: accent strip, avatar, name, optional dots, occasions, date + cadence.
   ///
   /// Parameters:
   /// - [context]: build context.
   ///
-  /// Returns: ink surface with a single visual column of text.
+  /// Returns: ink surface with a left accent bar and a single content column.
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final today = dateOnly(referenceDate);
     final isBirthday = isSameMonthDay(today, friend.birthday);
     final isReachOutDay = isReachOutRhythmDay(referenceDate, friend);
-    final countdown = birthdayCountdownLabel(context, friend.birthday, referenceDate);
+    final countdown =
+        birthdayCountdownLabel(context, friend.birthday, referenceDate);
     final md = formatMonthDay(friend.birthday);
-    final notesPreview = (friend.notes ?? '').trim();
+    final level = FriendLevel.fromStorage(friend.closenessLevel);
+    final levelAccent = level.accentColor(scheme);
 
     Color cardSurface = scheme.surfaceContainerLow;
     if (isBirthday && isReachOutDay) {
-      cardSurface = Color.lerp(scheme.primaryContainer, scheme.secondaryContainer, 0.45)!
-          .withValues(alpha: 0.55);
+      cardSurface =
+          Color.lerp(scheme.primaryContainer, scheme.secondaryContainer, 0.45)!
+              .withValues(alpha: 0.55);
     } else if (isBirthday) {
       cardSurface = scheme.primaryContainer.withValues(alpha: 0.42);
     } else if (isReachOutDay) {
@@ -83,91 +90,105 @@ class FriendCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: IntrinsicHeight(
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FriendAvatar(
-                  name: friend.name,
-                  photoPath: friend.photoPath,
-                  radius: 28,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        friend.name,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.2,
-                            ),
-                      ),
-                      if (groupAccentColors != null && groupAccentColors!.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        _GroupColorDots(colors: groupAccentColors!),
-                      ],
-                      if (isBirthday || isReachOutDay) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            if (isBirthday)
-                              _OccasionChip(
-                                icon: Icons.cake_rounded,
-                                label: 'Birthday',
-                                foreground: scheme.onPrimaryContainer,
-                                background: scheme.primaryContainer,
-                              ),
-                            if (isReachOutDay)
-                              _OccasionChip(
-                                icon: Icons.mark_chat_unread_rounded,
-                                label: 'Check-in day',
-                                foreground: scheme.onTertiaryContainer,
-                                background: scheme.tertiaryContainer,
-                              ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Text(
-                        '$md · $countdown',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.25,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _cadenceLine(friend.reminderIntervalDays),
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: scheme.onSurfaceVariant.withValues(alpha: 0.85),
-                            ),
-                      ),
-                      if (notesPreview.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          notesPreview,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurface.withValues(alpha: 0.72),
-                                height: 1.35,
-                              ),
-                        ),
-                      ],
-                    ],
+                Container(
+                  width: 4,
+                  color: levelAccent.withValues(
+                    alpha: level == FriendLevel.regular ? 0.35 : 0.9,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    color: scheme.outline,
-                    size: 22,
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FriendAvatar(
+                          name: friend.name,
+                          photoPath: friend.photoPath,
+                          radius: 28,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                friend.name,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.2,
+                                    ),
+                              ),
+                              if (groupAccentColors != null &&
+                                  groupAccentColors!.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                _GroupColorDots(colors: groupAccentColors!),
+                              ],
+                              if (isBirthday || isReachOutDay) ...[
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: [
+                                    if (isBirthday)
+                                      _OccasionChip(
+                                        icon: Icons.cake_rounded,
+                                        label: 'Birthday',
+                                        foreground: scheme.onPrimaryContainer,
+                                        background: scheme.primaryContainer,
+                                      ),
+                                    if (isReachOutDay)
+                                      _OccasionChip(
+                                        icon: Icons.mark_chat_unread_rounded,
+                                        label: 'Check-in day',
+                                        foreground: scheme.onTertiaryContainer,
+                                        background: scheme.tertiaryContainer,
+                                      ),
+                                  ],
+                                ),
+                              ],
+                              const SizedBox(height: 6),
+                              Text(
+                                '$md · $countdown',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                      height: 1.25,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _cadenceLine(friend.reminderIntervalDays),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant
+                                          .withValues(alpha: 0.85),
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            color: scheme.outline,
+                            size: 22,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -199,7 +220,8 @@ class _GroupColorDots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const maxDots = 6;
-    final show = colors.length > maxDots ? colors.take(maxDots).toList() : colors;
+    final show =
+        colors.length > maxDots ? colors.take(maxDots).toList() : colors;
     final extra = colors.length - show.length;
     return Row(
       children: [
@@ -223,7 +245,10 @@ class _GroupColorDots extends StatelessWidget {
                   color: show[i],
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.35),
                     width: 1,
                   ),
                   boxShadow: [
