@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/database.dart';
+import '../models/friend_level.dart';
+import '../utils/check_in_interval.dart';
 import '../utils/date_utils.dart';
 import 'friend_service.dart';
 import 'notification_schedule_prefs.dart';
@@ -30,7 +33,8 @@ class NotificationScheduler {
   /// Singleton used from [main] and after friend saves.
   static final NotificationScheduler instance = NotificationScheduler._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
 
@@ -38,6 +42,9 @@ class NotificationScheduler {
   String? _lastRescheduleFingerprint;
 
   DateTime? _lastRescheduleAt;
+
+  /// Cached per [rescheduleAll] batch so we do not re-query the OS for every friend.
+  AndroidScheduleMode? _cachedAndroidScheduleMode;
 
   /// Prepares timezone data, notification channels, and the notification plugin.
   ///
@@ -122,15 +129,18 @@ class NotificationScheduler {
           AndroidFlutterLocalNotificationsPlugin>();
       await android?.requestNotificationsPermission();
       await android?.requestExactAlarmsPermission();
+      _cachedAndroidScheduleMode = null;
     }
     if (Platform.isIOS) {
       await _plugin
-          .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
     if (Platform.isMacOS) {
       await _plugin
-          .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
   }
@@ -168,6 +178,7 @@ class NotificationScheduler {
     }
 
     try {
+      _cachedAndroidScheduleMode = null;
       final fingerprint = await _scheduleFingerprint(friends);
       final now = DateTime.now();
       if (_lastRescheduleFingerprint == fingerprint &&
@@ -177,7 +188,8 @@ class NotificationScheduler {
       }
 
       await _plugin.cancelAll();
-      final (hour, minute) = await NotificationSchedulePrefs.instance.loadReminderClock();
+      final (hour, minute) =
+          await NotificationSchedulePrefs.instance.loadReminderClock();
       final rows = await friends.getAllFriends();
       for (final friend in rows) {
         await _scheduleFriendNotifications(friend, hour, minute);
@@ -196,7 +208,7 @@ class NotificationScheduler {
     final buf = StringBuffer('$h:$m');
     for (final f in rows) {
       buf.write(
-        '|${f.id}|${f.birthday.toIso8601String()}|${f.reminderIntervalDays}|${f.lastContactedAt?.toIso8601String() ?? '-'}',
+        '|${f.id}|${f.birthday.toIso8601String()}|${f.reminderIntervalDays}|${f.useRandomCheckIn}|${f.activeCheckInIntervalDays}|${f.lastContactedAt?.toIso8601String() ?? '-'}',
       );
     }
     return buf.toString();
@@ -234,12 +246,14 @@ class NotificationScheduler {
     final local = tz.local;
     final nowTz = tz.TZDateTime.now(local);
 
-    await _scheduleNextBirthday(friend, nowTz, local, reminderHour, reminderMinute);
+    await _scheduleNextBirthday(
+        friend, nowTz, local, reminderHour, reminderMinute);
 
     final slots = defaultTargetPlatform == TargetPlatform.iOS
         ? _checkInSlotsIos
         : _checkInSlotsAndroid;
-    await _scheduleCheckIns(friend, nowTz, local, slots, reminderHour, reminderMinute);
+    await _scheduleCheckIns(
+        friend, nowTz, local, slots, reminderHour, reminderMinute);
   }
 
   /// Schedules the next birthday at [reminderHour]:[reminderMinute] local, rolling forward years if needed.
@@ -284,13 +298,12 @@ class NotificationScheduler {
       macOS: const DarwinNotificationDetails(),
     );
 
-    await _plugin.zonedSchedule(
-      birthdayNotificationId(friend.id),
-      '🎂 ${friend.name}\'s birthday',
-      'Wish them a great day!',
-      scheduled,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    await _zonedSchedule(
+      id: birthdayNotificationId(friend.id),
+      title: '🎂 ${friend.name}\'s birthday',
+      body: 'Wish them a great day!',
+      scheduled: scheduled,
+      details: details,
       payload: 'birthday:${friend.id}',
     );
   }
@@ -307,21 +320,19 @@ class NotificationScheduler {
     int reminderHour,
     int reminderMinute,
   ) async {
-    final intervalDays = friend.reminderIntervalDays;
-    final base = friend.lastContactedAt ?? friend.createdAt;
-    var anchor = tz.TZDateTime(
+    final level = FriendLevel.fromStorage(friend.closenessLevel);
+    final firstDay = firstCheckInRhythmDay(friend);
+    var candidate = tz.TZDateTime(
       location,
-      base.year,
-      base.month,
-      base.day,
+      firstDay.year,
+      firstDay.month,
+      firstDay.day,
       reminderHour,
       reminderMinute,
     );
-    if (friend.lastContactedAt != null) {
-      anchor = anchor.add(Duration(days: intervalDays));
-    }
-    while (!anchor.isAfter(nowTz)) {
-      anchor = anchor.add(Duration(days: intervalDays));
+    while (!candidate.isAfter(nowTz)) {
+      final stepDays = _lookaheadIntervalDays(friend, level, slotOffset: 0);
+      candidate = candidate.add(Duration(days: stepDays));
     }
 
     final details = NotificationDetails(
@@ -336,18 +347,110 @@ class NotificationScheduler {
       macOS: const DarwinNotificationDetails(),
     );
 
-    var candidate = anchor;
     for (var slot = 0; slot < slots; slot++) {
-      await _plugin.zonedSchedule(
-        checkInNotificationId(friend.id, slot),
-        'Say hi to ${friend.name}',
-        'Time for a quick check-in ($intervalDays-day rhythm)',
-        candidate,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      final intervalDays = slot == 0
+          ? effectiveCheckInIntervalDays(friend)
+          : _lookaheadIntervalDays(friend, level, slotOffset: slot);
+      await _zonedSchedule(
+        id: checkInNotificationId(friend.id, slot),
+        title: 'Say hi to ${friend.name}',
+        body: 'Time for a quick check-in ($intervalDays-day rhythm)',
+        scheduled: candidate,
+        details: details,
         payload: 'checkin:${friend.id}',
       );
-      candidate = candidate.add(Duration(days: intervalDays));
+      if (slot + 1 < slots) {
+        final nextStep = _lookaheadIntervalDays(friend, level, slotOffset: slot + 1);
+        candidate = candidate.add(Duration(days: nextStep));
+      }
+    }
+  }
+
+  /// Interval for a future notification slot (rolls per slot when random is on).
+  int _lookaheadIntervalDays(
+    FriendRow friend,
+    FriendLevel level, {
+    required int slotOffset,
+  }) {
+    if (slotOffset == 0) {
+      return effectiveCheckInIntervalDays(friend);
+    }
+    if (!friend.useRandomCheckIn) {
+      return friend.reminderIntervalDays;
+    }
+    return rollCheckInIntervalDays(
+      baseDays: friend.reminderIntervalDays,
+      level: level,
+      randomEnabled: true,
+    );
+  }
+
+  /// Android schedule mode for the current batch (exact when allowed, else inexact).
+  Future<AndroidScheduleMode> _androidScheduleModeForBatch() async {
+    final cached = _cachedAndroidScheduleMode;
+    if (cached != null) {
+      return cached;
+    }
+    final mode = await _resolveAndroidScheduleMode();
+    _cachedAndroidScheduleMode = mode;
+    return mode;
+  }
+
+  Future<AndroidScheduleMode> _resolveAndroidScheduleMode() async {
+    if (!Platform.isAndroid) {
+      return AndroidScheduleMode.exactAllowWhileIdle;
+    }
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    final canExact = await android?.canScheduleExactNotifications();
+    if (canExact == false) {
+      debugPrint(
+        'Exact alarms not allowed; scheduling reminders with inexact timing.',
+      );
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+    return AndroidScheduleMode.exactAllowWhileIdle;
+  }
+
+  /// Schedules a zoned notification, falling back to inexact mode if exact is denied.
+  Future<void> _zonedSchedule({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduled,
+    required NotificationDetails details,
+    required String payload,
+  }) async {
+    var mode = await _androidScheduleModeForBatch();
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduled,
+        details,
+        androidScheduleMode: mode,
+        payload: payload,
+      );
+    } on PlatformException catch (e) {
+      if (e.code != 'exact_alarms_not_permitted' ||
+          mode == AndroidScheduleMode.inexactAllowWhileIdle) {
+        rethrow;
+      }
+      debugPrint(
+        'Exact alarms not permitted; falling back to inexact scheduling.',
+      );
+      mode = AndroidScheduleMode.inexactAllowWhileIdle;
+      _cachedAndroidScheduleMode = mode;
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduled,
+        details,
+        androidScheduleMode: mode,
+        payload: payload,
+      );
     }
   }
 }

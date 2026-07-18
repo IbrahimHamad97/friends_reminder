@@ -9,8 +9,18 @@ import '../models/friend_mood.dart';
 import '../services/friend_service.dart';
 import '../services/group_service.dart';
 import '../services/notification_scheduler.dart';
-import '../utils/date_utils.dart';
+import '../utils/check_in_flow.dart';
+import '../utils/check_in_interval.dart';
+import '../utils/date_utils.dart'
+    show
+        dateOnly,
+        birthdayCountdownLabel,
+        formatMonthDay,
+        isReachOutRhythmDay,
+        isSameMonthDay,
+        lastContactedSummary;
 import '../utils/friend_phone.dart';
+import '../widgets/check_in_action_card.dart';
 import '../widgets/friend_avatar.dart';
 
 /// Read-focused view for one friend: closeness, mood, context, and actions before editing.
@@ -33,6 +43,7 @@ class FriendDetailScreen extends StatefulWidget {
 class _FriendDetailScreenState extends State<FriendDetailScreen> {
   late Future<List<GroupRow>> _groupsFuture;
   StreamSubscription<List<FriendGroupLinkRow>>? _linkSub;
+  bool _loggingCheckIn = false;
 
   @override
   void initState() {
@@ -41,7 +52,8 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
     _linkSub = widget.groupService.watchFriendGroupLinks().listen((_) {
       if (mounted) {
         setState(() {
-          _groupsFuture = widget.groupService.getGroupsForFriend(widget.friendId);
+          _groupsFuture =
+              widget.groupService.getGroupsForFriend(widget.friendId);
         });
       }
     });
@@ -53,20 +65,53 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
     super.dispose();
   }
 
-  String _cadenceLine(int days) {
-    if (days == 1) return 'Daily check-in reminder';
-    if (days == 7) return 'Weekly check-in reminder';
-    return 'Check-in every $days days';
+  Future<void> _logCheckIn(BuildContext context, FriendRow friend) async {
+    if (_loggingCheckIn) {
+      return;
+    }
+    setState(() => _loggingCheckIn = true);
+    try {
+      await runLogCheckInFlow(
+        context,
+        friendService: widget.friendService,
+        friend: friend,
+        reschedule: _reschedule,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loggingCheckIn = false);
+      }
+    }
   }
 
-  Future<void> _markReachedOut(BuildContext context) async {
-    await widget.friendService.setLastContactedAt(widget.friendId, DateTime.now());
-    await _reschedule();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Check-in rhythm restarted from today')),
-      );
+  Future<void> _confirmUndoLastCheckIn(BuildContext context) async {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              title: const Text('Undo last check-in?'),
+              content: const Text(
+                'This removes the date you logged reaching out. '
+                'Their next reminder will count from when you added them—not from your last check-in.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Keep check-in'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Undo check-in'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    if (!ok || !context.mounted) {
+      return;
     }
+    await _clearLastContacted(context);
   }
 
   Future<void> _clearLastContacted(BuildContext context) async {
@@ -74,7 +119,11 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
     await _reschedule();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Using original rhythm anchor again')),
+        const SnackBar(
+          content: Text(
+            'Last check-in removed. Next reminder counts from when you added them.',
+          ),
+        ),
       );
     }
   }
@@ -104,7 +153,8 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
     }
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open WhatsApp — is it installed?')),
+        const SnackBar(
+            content: Text('Could not open WhatsApp — is it installed?')),
       );
     }
   }
@@ -136,7 +186,8 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Friend not found', style: Theme.of(context).textTheme.titleLarge),
+                    Text('Friend not found',
+                        style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: () => context.pop(),
@@ -187,17 +238,6 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 5,
-                        height: 112,
-                        decoration: BoxDecoration(
-                          color: level.accentColor(scheme).withValues(
-                            alpha: level == FriendLevel.regular ? 0.4 : 0.95,
-                          ),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
                       FriendAvatar(
                         name: f.name,
                         photoPath: f.photoPath,
@@ -210,7 +250,10 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                           children: [
                             Text(
                               f.name,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -0.5,
                                   ),
@@ -242,32 +285,29 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                   ),
                 ),
               ),
-              if (isBirthday || isReachOut)
+              if (isBirthday)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
                   sliver: SliverToBoxAdapter(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: [
-                        if (isBirthday)
-                          _OccasionBanner(
-                            icon: Icons.cake_rounded,
-                            label: 'Birthday today',
-                            color: scheme.primaryContainer,
-                            onText: scheme.onPrimaryContainer,
-                          ),
-                        if (isReachOut)
-                          _OccasionBanner(
-                            icon: Icons.mark_chat_unread_rounded,
-                            label: 'Check-in rhythm day',
-                            color: scheme.tertiaryContainer,
-                            onText: scheme.onTertiaryContainer,
-                          ),
-                      ],
+                    child: _OccasionBanner(
+                      icon: Icons.cake_rounded,
+                      label: 'Birthday today',
+                      color: scheme.primaryContainer,
+                      onText: scheme.onPrimaryContainer,
                     ),
                   ),
                 ),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(24, isBirthday ? 4 : 0, 24, 8),
+                sliver: SliverToBoxAdapter(
+                  child: CheckInActionCard(
+                    friendName: f.name,
+                    isDue: isReachOut,
+                    isLoading: _loggingCheckIn,
+                    onLogCheckIn: () => _logCheckIn(context, f),
+                  ),
+                ),
+              ),
               if (phone.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -279,7 +319,10 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                           Expanded(
                             child: Text(
                               formatFriendPhoneDisplay(phone),
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleSmall
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
@@ -294,7 +337,8 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                             tooltip: 'WhatsApp',
                             onPressed: () => _openWhatsApp(context, phone),
                             style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xFF25D366).withValues(alpha: 0.18),
+                              backgroundColor: const Color(0xFF25D366)
+                                  .withValues(alpha: 0.18),
                               foregroundColor: const Color(0xFF128C7E),
                             ),
                             icon: const Icon(Icons.chat_rounded),
@@ -313,24 +357,48 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                       children: [
                         Text(
                           '${formatMonthDay(f.birthday)} · ${birthdayCountdownLabel(context, f.birthday, today)}',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _cadenceLine(f.reminderIntervalDays),
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
+                          checkInCadenceLabel(f),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
                         ),
                         if (lastAt != null) ...[
                           const SizedBox(height: 10),
                           Text(
                             lastContactedSummary(lastAt),
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Reminders are counting from that check-in.',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () => _confirmUndoLastCheckIn(context),
+                            icon: const Icon(Icons.undo_rounded, size: 20),
+                            label: const Text('Undo last check-in'),
+                            style: OutlinedButton.styleFrom(
+                              alignment: Alignment.centerLeft,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                            ),
                           ),
                         ],
                       ],
@@ -362,7 +430,9 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                                 child: const SizedBox.shrink(),
                               ),
                               label: Text(g.name),
-                              side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+                              side: BorderSide(
+                                  color: scheme.outlineVariant
+                                      .withValues(alpha: 0.5)),
                             );
                           }).toList(),
                         ),
@@ -380,12 +450,16 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.push_pin_outlined, size: 18, color: scheme.primary),
+                          Icon(Icons.push_pin_outlined,
+                              size: 18, color: scheme.primary),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               met,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
                                     height: 1.4,
                                     fontStyle: FontStyle.italic,
                                   ),
@@ -411,7 +485,10 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                           Expanded(
                             child: Text(
                               chat,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(height: 1.45),
                             ),
                           ),
                         ],
@@ -427,33 +504,15 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                       title: 'Notes',
                       child: Text(
                         notes,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(height: 1.45),
                       ),
                     ),
                   ),
                 ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                sliver: SliverToBoxAdapter(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _markReachedOut(context),
-                    icon: const Icon(Icons.mark_chat_read_outlined),
-                    label: const Text('Reached out today'),
-                  ),
-                ),
-              ),
-              if (lastAt != null)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 120),
-                  sliver: SliverToBoxAdapter(
-                    child: TextButton(
-                      onPressed: () => _clearLastContacted(context),
-                      child: const Text('Use original rhythm (clear last reached out)'),
-                    ),
-                  ),
-                )
-              else
-                const SliverToBoxAdapter(child: SizedBox(height: 120)),
+              const SliverToBoxAdapter(child: SizedBox(height: 120)),
             ],
           );
         },
@@ -475,7 +534,8 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+        border:
+            Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),

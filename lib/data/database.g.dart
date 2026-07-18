@@ -43,7 +43,25 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
       'reminder_interval_days', aliasedName, false,
       type: DriftSqlType.int,
       requiredDuringInsert: false,
-      defaultValue: const Constant(14));
+      defaultValue: const Constant(30));
+  static const VerificationMeta _useRandomCheckInMeta =
+      const VerificationMeta('useRandomCheckIn');
+  @override
+  late final GeneratedColumn<bool> useRandomCheckIn = GeneratedColumn<bool>(
+      'use_random_check_in', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("use_random_check_in" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _activeCheckInIntervalDaysMeta =
+      const VerificationMeta('activeCheckInIntervalDays');
+  @override
+  late final GeneratedColumn<int> activeCheckInIntervalDays =
+      GeneratedColumn<int>('active_check_in_interval_days', aliasedName, false,
+          type: DriftSqlType.int,
+          requiredDuringInsert: false,
+          defaultValue: const Constant(30));
   static const VerificationMeta _photoPathMeta =
       const VerificationMeta('photoPath');
   @override
@@ -103,6 +121,8 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
         birthday,
         notes,
         reminderIntervalDays,
+        useRandomCheckIn,
+        activeCheckInIntervalDays,
         photoPath,
         lastContactedAt,
         closenessLevel,
@@ -146,6 +166,19 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           _reminderIntervalDaysMeta,
           reminderIntervalDays.isAcceptableOrUnknown(
               data['reminder_interval_days']!, _reminderIntervalDaysMeta));
+    }
+    if (data.containsKey('use_random_check_in')) {
+      context.handle(
+          _useRandomCheckInMeta,
+          useRandomCheckIn.isAcceptableOrUnknown(
+              data['use_random_check_in']!, _useRandomCheckInMeta));
+    }
+    if (data.containsKey('active_check_in_interval_days')) {
+      context.handle(
+          _activeCheckInIntervalDaysMeta,
+          activeCheckInIntervalDays.isAcceptableOrUnknown(
+              data['active_check_in_interval_days']!,
+              _activeCheckInIntervalDaysMeta));
     }
     if (data.containsKey('photo_path')) {
       context.handle(_photoPathMeta,
@@ -206,6 +239,11 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}notes']),
       reminderIntervalDays: attachedDatabase.typeMapping.read(
           DriftSqlType.int, data['${effectivePrefix}reminder_interval_days'])!,
+      useRandomCheckIn: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}use_random_check_in'])!,
+      activeCheckInIntervalDays: attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}active_check_in_interval_days'])!,
       photoPath: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}photo_path']),
       lastContactedAt: attachedDatabase.typeMapping.read(
@@ -244,8 +282,14 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
   /// Optional free-form notes.
   final String? notes;
 
-  /// How often to remind the user to reach out (1–365 days).
+  /// Base check-in cadence in days (1–365); closeness picks the default.
   final int reminderIntervalDays;
+
+  /// When true, each cycle uses [activeCheckInIntervalDays] rolled from the base + level band.
+  final bool useRandomCheckIn;
+
+  /// Interval for the current pending check-in cycle (rolled or equal to [reminderIntervalDays]).
+  final int activeCheckInIntervalDays;
 
   /// Optional absolute path to a JPEG/PNG copied into app storage.
   final String? photoPath;
@@ -276,6 +320,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       required this.birthday,
       this.notes,
       required this.reminderIntervalDays,
+      required this.useRandomCheckIn,
+      required this.activeCheckInIntervalDays,
       this.photoPath,
       this.lastContactedAt,
       required this.closenessLevel,
@@ -294,6 +340,9 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       map['notes'] = Variable<String>(notes);
     }
     map['reminder_interval_days'] = Variable<int>(reminderIntervalDays);
+    map['use_random_check_in'] = Variable<bool>(useRandomCheckIn);
+    map['active_check_in_interval_days'] =
+        Variable<int>(activeCheckInIntervalDays);
     if (!nullToAbsent || photoPath != null) {
       map['photo_path'] = Variable<String>(photoPath);
     }
@@ -325,6 +374,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       notes:
           notes == null && nullToAbsent ? const Value.absent() : Value(notes),
       reminderIntervalDays: Value(reminderIntervalDays),
+      useRandomCheckIn: Value(useRandomCheckIn),
+      activeCheckInIntervalDays: Value(activeCheckInIntervalDays),
       photoPath: photoPath == null && nullToAbsent
           ? const Value.absent()
           : Value(photoPath),
@@ -358,6 +409,9 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       notes: serializer.fromJson<String?>(json['notes']),
       reminderIntervalDays:
           serializer.fromJson<int>(json['reminderIntervalDays']),
+      useRandomCheckIn: serializer.fromJson<bool>(json['useRandomCheckIn']),
+      activeCheckInIntervalDays:
+          serializer.fromJson<int>(json['activeCheckInIntervalDays']),
       photoPath: serializer.fromJson<String?>(json['photoPath']),
       lastContactedAt: serializer.fromJson<DateTime?>(json['lastContactedAt']),
       closenessLevel: serializer.fromJson<String>(json['closenessLevel']),
@@ -377,6 +431,9 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       'birthday': serializer.toJson<DateTime>(birthday),
       'notes': serializer.toJson<String?>(notes),
       'reminderIntervalDays': serializer.toJson<int>(reminderIntervalDays),
+      'useRandomCheckIn': serializer.toJson<bool>(useRandomCheckIn),
+      'activeCheckInIntervalDays':
+          serializer.toJson<int>(activeCheckInIntervalDays),
       'photoPath': serializer.toJson<String?>(photoPath),
       'lastContactedAt': serializer.toJson<DateTime?>(lastContactedAt),
       'closenessLevel': serializer.toJson<String>(closenessLevel),
@@ -394,6 +451,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           DateTime? birthday,
           Value<String?> notes = const Value.absent(),
           int? reminderIntervalDays,
+          bool? useRandomCheckIn,
+          int? activeCheckInIntervalDays,
           Value<String?> photoPath = const Value.absent(),
           Value<DateTime?> lastContactedAt = const Value.absent(),
           String? closenessLevel,
@@ -408,6 +467,9 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
         birthday: birthday ?? this.birthday,
         notes: notes.present ? notes.value : this.notes,
         reminderIntervalDays: reminderIntervalDays ?? this.reminderIntervalDays,
+        useRandomCheckIn: useRandomCheckIn ?? this.useRandomCheckIn,
+        activeCheckInIntervalDays:
+            activeCheckInIntervalDays ?? this.activeCheckInIntervalDays,
         photoPath: photoPath.present ? photoPath.value : this.photoPath,
         lastContactedAt: lastContactedAt.present
             ? lastContactedAt.value
@@ -430,6 +492,12 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       reminderIntervalDays: data.reminderIntervalDays.present
           ? data.reminderIntervalDays.value
           : this.reminderIntervalDays,
+      useRandomCheckIn: data.useRandomCheckIn.present
+          ? data.useRandomCheckIn.value
+          : this.useRandomCheckIn,
+      activeCheckInIntervalDays: data.activeCheckInIntervalDays.present
+          ? data.activeCheckInIntervalDays.value
+          : this.activeCheckInIntervalDays,
       photoPath: data.photoPath.present ? data.photoPath.value : this.photoPath,
       lastContactedAt: data.lastContactedAt.present
           ? data.lastContactedAt.value
@@ -456,6 +524,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           ..write('birthday: $birthday, ')
           ..write('notes: $notes, ')
           ..write('reminderIntervalDays: $reminderIntervalDays, ')
+          ..write('useRandomCheckIn: $useRandomCheckIn, ')
+          ..write('activeCheckInIntervalDays: $activeCheckInIntervalDays, ')
           ..write('photoPath: $photoPath, ')
           ..write('lastContactedAt: $lastContactedAt, ')
           ..write('closenessLevel: $closenessLevel, ')
@@ -475,6 +545,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       birthday,
       notes,
       reminderIntervalDays,
+      useRandomCheckIn,
+      activeCheckInIntervalDays,
       photoPath,
       lastContactedAt,
       closenessLevel,
@@ -492,6 +564,8 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           other.birthday == this.birthday &&
           other.notes == this.notes &&
           other.reminderIntervalDays == this.reminderIntervalDays &&
+          other.useRandomCheckIn == this.useRandomCheckIn &&
+          other.activeCheckInIntervalDays == this.activeCheckInIntervalDays &&
           other.photoPath == this.photoPath &&
           other.lastContactedAt == this.lastContactedAt &&
           other.closenessLevel == this.closenessLevel &&
@@ -508,6 +582,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
   final Value<DateTime> birthday;
   final Value<String?> notes;
   final Value<int> reminderIntervalDays;
+  final Value<bool> useRandomCheckIn;
+  final Value<int> activeCheckInIntervalDays;
   final Value<String?> photoPath;
   final Value<DateTime?> lastContactedAt;
   final Value<String> closenessLevel;
@@ -522,6 +598,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     this.birthday = const Value.absent(),
     this.notes = const Value.absent(),
     this.reminderIntervalDays = const Value.absent(),
+    this.useRandomCheckIn = const Value.absent(),
+    this.activeCheckInIntervalDays = const Value.absent(),
     this.photoPath = const Value.absent(),
     this.lastContactedAt = const Value.absent(),
     this.closenessLevel = const Value.absent(),
@@ -537,6 +615,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     required DateTime birthday,
     this.notes = const Value.absent(),
     this.reminderIntervalDays = const Value.absent(),
+    this.useRandomCheckIn = const Value.absent(),
+    this.activeCheckInIntervalDays = const Value.absent(),
     this.photoPath = const Value.absent(),
     this.lastContactedAt = const Value.absent(),
     this.closenessLevel = const Value.absent(),
@@ -553,6 +633,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     Expression<DateTime>? birthday,
     Expression<String>? notes,
     Expression<int>? reminderIntervalDays,
+    Expression<bool>? useRandomCheckIn,
+    Expression<int>? activeCheckInIntervalDays,
     Expression<String>? photoPath,
     Expression<DateTime>? lastContactedAt,
     Expression<String>? closenessLevel,
@@ -569,6 +651,9 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       if (notes != null) 'notes': notes,
       if (reminderIntervalDays != null)
         'reminder_interval_days': reminderIntervalDays,
+      if (useRandomCheckIn != null) 'use_random_check_in': useRandomCheckIn,
+      if (activeCheckInIntervalDays != null)
+        'active_check_in_interval_days': activeCheckInIntervalDays,
       if (photoPath != null) 'photo_path': photoPath,
       if (lastContactedAt != null) 'last_contacted_at': lastContactedAt,
       if (closenessLevel != null) 'closeness_level': closenessLevel,
@@ -586,6 +671,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       Value<DateTime>? birthday,
       Value<String?>? notes,
       Value<int>? reminderIntervalDays,
+      Value<bool>? useRandomCheckIn,
+      Value<int>? activeCheckInIntervalDays,
       Value<String?>? photoPath,
       Value<DateTime?>? lastContactedAt,
       Value<String>? closenessLevel,
@@ -600,6 +687,9 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       birthday: birthday ?? this.birthday,
       notes: notes ?? this.notes,
       reminderIntervalDays: reminderIntervalDays ?? this.reminderIntervalDays,
+      useRandomCheckIn: useRandomCheckIn ?? this.useRandomCheckIn,
+      activeCheckInIntervalDays:
+          activeCheckInIntervalDays ?? this.activeCheckInIntervalDays,
       photoPath: photoPath ?? this.photoPath,
       lastContactedAt: lastContactedAt ?? this.lastContactedAt,
       closenessLevel: closenessLevel ?? this.closenessLevel,
@@ -628,6 +718,13 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     }
     if (reminderIntervalDays.present) {
       map['reminder_interval_days'] = Variable<int>(reminderIntervalDays.value);
+    }
+    if (useRandomCheckIn.present) {
+      map['use_random_check_in'] = Variable<bool>(useRandomCheckIn.value);
+    }
+    if (activeCheckInIntervalDays.present) {
+      map['active_check_in_interval_days'] =
+          Variable<int>(activeCheckInIntervalDays.value);
     }
     if (photoPath.present) {
       map['photo_path'] = Variable<String>(photoPath.value);
@@ -664,6 +761,8 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
           ..write('birthday: $birthday, ')
           ..write('notes: $notes, ')
           ..write('reminderIntervalDays: $reminderIntervalDays, ')
+          ..write('useRandomCheckIn: $useRandomCheckIn, ')
+          ..write('activeCheckInIntervalDays: $activeCheckInIntervalDays, ')
           ..write('photoPath: $photoPath, ')
           ..write('lastContactedAt: $lastContactedAt, ')
           ..write('closenessLevel: $closenessLevel, ')
@@ -1219,6 +1318,8 @@ typedef $$FriendsTableCreateCompanionBuilder = FriendsCompanion Function({
   required DateTime birthday,
   Value<String?> notes,
   Value<int> reminderIntervalDays,
+  Value<bool> useRandomCheckIn,
+  Value<int> activeCheckInIntervalDays,
   Value<String?> photoPath,
   Value<DateTime?> lastContactedAt,
   Value<String> closenessLevel,
@@ -1234,6 +1335,8 @@ typedef $$FriendsTableUpdateCompanionBuilder = FriendsCompanion Function({
   Value<DateTime> birthday,
   Value<String?> notes,
   Value<int> reminderIntervalDays,
+  Value<bool> useRandomCheckIn,
+  Value<int> activeCheckInIntervalDays,
   Value<String?> photoPath,
   Value<DateTime?> lastContactedAt,
   Value<String> closenessLevel,
@@ -1289,6 +1392,14 @@ class $$FriendsTableFilterComposer
 
   ColumnFilters<int> get reminderIntervalDays => $composableBuilder(
       column: $table.reminderIntervalDays,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get useRandomCheckIn => $composableBuilder(
+      column: $table.useRandomCheckIn,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get activeCheckInIntervalDays => $composableBuilder(
+      column: $table.activeCheckInIntervalDays,
       builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get photoPath => $composableBuilder(
@@ -1365,6 +1476,14 @@ class $$FriendsTableOrderingComposer
       column: $table.reminderIntervalDays,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get useRandomCheckIn => $composableBuilder(
+      column: $table.useRandomCheckIn,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get activeCheckInIntervalDays => $composableBuilder(
+      column: $table.activeCheckInIntervalDays,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get photoPath => $composableBuilder(
       column: $table.photoPath, builder: (column) => ColumnOrderings(column));
 
@@ -1416,6 +1535,12 @@ class $$FriendsTableAnnotationComposer
 
   GeneratedColumn<int> get reminderIntervalDays => $composableBuilder(
       column: $table.reminderIntervalDays, builder: (column) => column);
+
+  GeneratedColumn<bool> get useRandomCheckIn => $composableBuilder(
+      column: $table.useRandomCheckIn, builder: (column) => column);
+
+  GeneratedColumn<int> get activeCheckInIntervalDays => $composableBuilder(
+      column: $table.activeCheckInIntervalDays, builder: (column) => column);
 
   GeneratedColumn<String> get photoPath =>
       $composableBuilder(column: $table.photoPath, builder: (column) => column);
@@ -1491,6 +1616,8 @@ class $$FriendsTableTableManager extends RootTableManager<
             Value<DateTime> birthday = const Value.absent(),
             Value<String?> notes = const Value.absent(),
             Value<int> reminderIntervalDays = const Value.absent(),
+            Value<bool> useRandomCheckIn = const Value.absent(),
+            Value<int> activeCheckInIntervalDays = const Value.absent(),
             Value<String?> photoPath = const Value.absent(),
             Value<DateTime?> lastContactedAt = const Value.absent(),
             Value<String> closenessLevel = const Value.absent(),
@@ -1506,6 +1633,8 @@ class $$FriendsTableTableManager extends RootTableManager<
             birthday: birthday,
             notes: notes,
             reminderIntervalDays: reminderIntervalDays,
+            useRandomCheckIn: useRandomCheckIn,
+            activeCheckInIntervalDays: activeCheckInIntervalDays,
             photoPath: photoPath,
             lastContactedAt: lastContactedAt,
             closenessLevel: closenessLevel,
@@ -1521,6 +1650,8 @@ class $$FriendsTableTableManager extends RootTableManager<
             required DateTime birthday,
             Value<String?> notes = const Value.absent(),
             Value<int> reminderIntervalDays = const Value.absent(),
+            Value<bool> useRandomCheckIn = const Value.absent(),
+            Value<int> activeCheckInIntervalDays = const Value.absent(),
             Value<String?> photoPath = const Value.absent(),
             Value<DateTime?> lastContactedAt = const Value.absent(),
             Value<String> closenessLevel = const Value.absent(),
@@ -1536,6 +1667,8 @@ class $$FriendsTableTableManager extends RootTableManager<
             birthday: birthday,
             notes: notes,
             reminderIntervalDays: reminderIntervalDays,
+            useRandomCheckIn: useRandomCheckIn,
+            activeCheckInIntervalDays: activeCheckInIntervalDays,
             photoPath: photoPath,
             lastContactedAt: lastContactedAt,
             closenessLevel: closenessLevel,

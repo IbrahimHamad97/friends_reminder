@@ -49,6 +49,8 @@
 		<string>This app saves an optional friend photo on your device.</string>
 		<key>NSCameraUsageDescription</key>
 		<string>This app can attach an optional photo from your camera.</string>
+		<key>NSContactsUsageDescription</key>
+		<string>Pick a phone number from your contacts when adding a friend.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
 		<key>LSApplicationQueriesSchemes</key>

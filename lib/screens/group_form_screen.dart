@@ -10,8 +10,10 @@ import '../services/group_photo_storage.dart';
 import '../services/group_service.dart';
 import '../utils/circular_photo_crop.dart';
 import '../utils/group_palette.dart';
+import '../utils/app_snackbar.dart';
 import '../utils/validators.dart';
 import '../widgets/local_file_avatar.dart';
+import '../widgets/saving_filled_button.dart';
 
 /// Create or edit a **group**: display name, accent color (full [ColorPicker] dialog),
 /// optional cover photo, and bulk **member** checklist ([FriendGroupLinks]).
@@ -64,6 +66,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
 
   /// `true` while loading an existing group in [_load].
   bool _loading = false;
+
+  /// `true` while [_submit] is persisting the group.
+  bool _saving = false;
 
   /// `true` after [_load] has finished for create or edit paths.
   bool _initialized = false;
@@ -155,7 +160,8 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     if (kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Saving photos is supported on mobile and desktop installs.'),
+          content: Text(
+              'Saving photos is supported on mobile and desktop installs.'),
         ),
       );
       return;
@@ -212,14 +218,17 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
             },
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 final c = draft;
                 final r = (c.r * 255.0).round().clamp(0, 255);
                 final g = (c.g * 255.0).round().clamp(0, 255);
                 final b = (c.b * 255.0).round().clamp(0, 255);
-                setState(() => _colorArgb = 0xFF000000 | (r << 16) | (g << 8) | b);
+                setState(
+                    () => _colorArgb = 0xFF000000 | (r << 16) | (g << 8) | b);
                 Navigator.pop(ctx);
               },
               child: const Text('Use this color'),
@@ -234,12 +243,16 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
   ///
   /// Returns: future completing after save or error snackbar.
   Future<void> _submit() async {
+    if (_saving) {
+      return;
+    }
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
       return;
     }
     final name = _nameController.text.trim();
 
+    setState(() => _saving = true);
     try {
       if (_isEditing) {
         final id = widget.groupId!;
@@ -250,7 +263,8 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
           colorArgb: _colorArgb,
         );
         await widget.groupService.setMembersForGroup(id, _memberIds);
-        await _syncPhotoAfterSave(groupId: id, previousPath: previous?.photoPath);
+        await _syncPhotoAfterSave(
+            groupId: id, previousPath: previous?.photoPath);
       } else {
         final id = await widget.groupService.createGroup(
           name: name,
@@ -262,6 +276,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
       if (!mounted) {
         return;
       }
+      final message =
+          _isEditing ? 'Group updated' : 'Group created successfully';
+      showAppSnackBar(message);
       context.pop();
     } catch (e) {
       if (!mounted) {
@@ -270,6 +287,10 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not save: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -290,10 +311,13 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     }
     final stagedPath = _pickedImagePath;
     if (stagedPath != null && !kIsWeb) {
-      if (previousPath != null && previousPath.isNotEmpty && !_removeStoredPhoto) {
+      if (previousPath != null &&
+          previousPath.isNotEmpty &&
+          !_removeStoredPhoto) {
         await GroupPhotoStorage.deleteIfExists(previousPath);
       }
-      final saved = await GroupPhotoStorage.saveForGroupFromPath(groupId, stagedPath);
+      final saved =
+          await GroupPhotoStorage.saveForGroupFromPath(groupId, stagedPath);
       await widget.groupService.setGroupPhotoPath(groupId, saved);
     }
   }
@@ -314,7 +338,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
               'Friends stay in your list—only this group and its cover photo link are removed.',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel')),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
                 child: const Text('Delete'),
@@ -330,7 +356,8 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     if (!mounted) {
       return;
     }
-    context.pop();
+    showAppSnackBar('Group removed');
+    context.go('/friends');
   }
 
   /// Large circular preview at the top: staged file, stored file, or accent fallback + [Hero].
@@ -360,7 +387,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
         ),
       );
     }
-    if (!_removeStoredPhoto && _storedPhotoPath != null && _storedPhotoPath!.isNotEmpty) {
+    if (!_removeStoredPhoto &&
+        _storedPhotoPath != null &&
+        _storedPhotoPath!.isNotEmpty) {
       return Hero(
         tag: heroTag,
         child: Material(
@@ -381,7 +410,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
 
   bool get _canClearPhoto =>
       _pickedImagePath != null ||
-      (_storedPhotoPath != null && _storedPhotoPath!.isNotEmpty && !_removeStoredPhoto);
+      (_storedPhotoPath != null &&
+          _storedPhotoPath!.isNotEmpty &&
+          !_removeStoredPhoto);
 
   /// Builds the scrollable form, or a loading scaffold until [_initialized] is true.
   ///
@@ -442,7 +473,8 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                             child: IconButton(
                               tooltip: 'Choose photo',
                               onPressed: _pickPhoto,
-                              icon: Icon(Icons.photo_camera_outlined, color: scheme.onPrimary),
+                              icon: Icon(Icons.photo_camera_outlined,
+                                  color: scheme.onPrimary),
                             ),
                           ),
                         ),
@@ -451,7 +483,9 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                   ),
                   if (_canClearPhoto)
                     Align(
-                      child: TextButton(onPressed: _clearPhoto, child: const Text('Remove photo')),
+                      child: TextButton(
+                          onPressed: _clearPhoto,
+                          child: const Text('Remove photo')),
                     ),
                   const SizedBox(height: 8),
                   TextFormField(
@@ -523,10 +557,13 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                         decoration: BoxDecoration(
                           color: on
                               ? Color(_colorArgb).withValues(alpha: 0.12)
-                              : scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                              : scheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: on ? Color(_colorArgb).withValues(alpha: 0.55) : scheme.outline.withValues(alpha: 0.2),
+                            color: on
+                                ? Color(_colorArgb).withValues(alpha: 0.55)
+                                : scheme.outline.withValues(alpha: 0.2),
                           ),
                         ),
                         child: CheckboxListTile(
@@ -543,20 +580,25 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                           title: Text(
                             f.name,
                             style: TextStyle(
-                              fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                              fontWeight:
+                                  on ? FontWeight.w700 : FontWeight.w500,
                             ),
                           ),
                           secondary: CircleAvatar(
-                            backgroundColor: scheme.primaryContainer.withValues(alpha: 0.5),
+                            backgroundColor:
+                                scheme.primaryContainer.withValues(alpha: 0.5),
                             child: Text(
-                              f.name.isNotEmpty ? f.name.substring(0, 1).toUpperCase() : '?',
+                              f.name.isNotEmpty
+                                  ? f.name.substring(0, 1).toUpperCase()
+                                  : '?',
                               style: TextStyle(
                                 color: scheme.onPrimaryContainer,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
                         ),
                       );
                     }),
@@ -564,7 +606,8 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
                     const SizedBox(height: 24),
                     TextButton(
                       onPressed: _confirmDelete,
-                      style: TextButton.styleFrom(foregroundColor: scheme.error),
+                      style:
+                          TextButton.styleFrom(foregroundColor: scheme.error),
                       child: const Text('Delete group'),
                     ),
                   ],
@@ -576,13 +619,10 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: FilledButton(
+              child: SavingFilledButton(
+                saving: _saving,
                 onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Text(_isEditing ? 'Save group' : 'Create group'),
+                label: _isEditing ? 'Save group' : 'Create group',
               ),
             ),
           ),

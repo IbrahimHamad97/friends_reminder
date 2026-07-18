@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/contact_phone_import.dart';
 import '../services/friend_photo_storage.dart';
 import '../services/friend_service.dart';
 import '../services/group_service.dart';
@@ -13,8 +14,10 @@ import '../models/friend_mood.dart';
 import '../utils/circular_photo_crop.dart';
 import '../utils/date_utils.dart';
 import '../utils/friend_phone.dart';
+import '../utils/app_snackbar.dart';
 import '../utils/validators.dart';
 import '../widgets/local_file_avatar.dart';
+import '../widgets/saving_filled_button.dart';
 
 /// Create or edit a friend: identity, birthday, notes, reminder cadence, optional photo,
 /// and **group membership** (chips synced via [GroupService.setGroupsForFriend] on save).
@@ -57,7 +60,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
   DateTime _birthday = DateTime(DateTime.now().year, 1, 1);
   FriendLevel _closenessLevel = FriendLevel.regular;
   FriendMood? _mood;
+  bool _useRandomCheckIn = true;
   bool _loading = false;
+  bool _saving = false;
   bool _initialized = false;
 
   /// Staged gallery pick path (mobile/desktop only).
@@ -87,7 +92,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     super.initState();
     _nameController = TextEditingController();
     _notesController = TextEditingController();
-    _reminderDaysController = TextEditingController(text: '14');
+    _reminderDaysController = TextEditingController(
+      text: '${FriendLevel.regular.defaultReminderDays}',
+    );
     _lastChatController = TextEditingController();
     _howWeMetController = TextEditingController();
     _phoneController = TextEditingController();
@@ -135,6 +142,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     _howWeMetController.text = row.howWeMet ?? '';
     _phoneController.text = row.phoneNumber ?? '';
     _closenessLevel = FriendLevel.fromStorage(row.closenessLevel);
+    _useRandomCheckIn = row.useRandomCheckIn;
     _mood = FriendMood.fromStorage(row.moodTag);
     _storedPhotoPath = row.photoPath;
     _lastContactedAt = row.lastContactedAt;
@@ -177,7 +185,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     if (kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Saving photos is supported on mobile and desktop installs.'),
+          content: Text(
+              'Saving photos is supported on mobile and desktop installs.'),
         ),
       );
       return;
@@ -198,6 +207,15 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
       _pickedImagePath = croppedPath;
       _removeStoredPhoto = false;
     });
+  }
+
+  /// Fills the phone field from a device contact (mobile only).
+  Future<void> _importPhoneFromContacts() async {
+    final phone = await pickContactPhoneNumber(context);
+    if (phone == null || !mounted) {
+      return;
+    }
+    setState(() => _phoneController.text = phone);
   }
 
   /// Clears both staged and stored photo previews (applied on save for edits).
@@ -246,12 +264,23 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     return int.tryParse(text.trim());
   }
 
+  /// Applies default reminder days when the user picks a closeness level.
+  void _selectCloseness(FriendLevel level) {
+    setState(() {
+      _closenessLevel = level;
+      _reminderDaysController.text = '${level.defaultReminderDays}';
+    });
+  }
+
   /// Persists the friend row, optional photo, **and** group links, then pops on success.
   ///
   /// Calls [GroupService.setGroupsForFriend] after the friend id is known.
   ///
   /// Returns: future completing after save attempt (shows snackbar on error).
   Future<void> _submit() async {
+    if (_saving) {
+      return;
+    }
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
       return;
@@ -266,6 +295,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     final howWeMet = _optionalNotes(_howWeMetController.text);
     final phone = normalizeFriendPhoneInput(_phoneController.text);
 
+    setState(() => _saving = true);
     try {
       late final int savedId;
       if (_isEditing) {
@@ -277,6 +307,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
+          useRandomCheckIn: _useRandomCheckIn,
           closenessLevel: _closenessLevel.storageKey,
           moodTag: _mood?.storageKey,
           lastChatSnippet: lastChat,
@@ -293,6 +324,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           birthday: _birthday,
           notes: notes,
           reminderIntervalDays: reminderDays,
+          useRandomCheckIn: _useRandomCheckIn,
           closenessLevel: _closenessLevel.storageKey,
           moodTag: _mood?.storageKey,
           lastChatSnippet: lastChat,
@@ -312,6 +344,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
       if (!mounted) {
         return;
       }
+      final message =
+          _isEditing ? 'Changes saved' : 'Friend added successfully';
+      showAppSnackBar(message);
       context.pop();
     } catch (e) {
       if (!mounted) {
@@ -320,6 +355,10 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not save: $e')),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -332,31 +371,35 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     } catch (_) {}
   }
 
-  /// Records that you messaged them today and shifts the next check-in reminders.
-  Future<void> _markReachedOut() async {
+  Future<void> _confirmUndoLastCheckIn() async {
     final id = widget.friendId;
     if (id == null) {
       return;
     }
-    await widget.friendService.setLastContactedAt(id, DateTime.now());
-    final row = await widget.friendService.getFriendById(id);
-    if (!mounted) {
-      return;
-    }
-    setState(() => _lastContactedAt = row?.lastContactedAt);
-    await _refreshNotifications();
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Check-in rhythm restarted from today')),
-    );
-  }
-
-  /// Clears [lastContactedAt] so the rhythm uses their original anchor again.
-  Future<void> _clearLastContacted() async {
-    final id = widget.friendId;
-    if (id == null) {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) {
+            return AlertDialog(
+              title: const Text('Undo last check-in?'),
+              content: const Text(
+                'This removes the date you logged reaching out. '
+                'Their next reminder will count from when you added them—not from your last check-in.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Keep check-in'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Undo check-in'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    if (!ok || !mounted) {
       return;
     }
     await widget.friendService.setLastContactedAt(id, null);
@@ -365,6 +408,16 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     }
     setState(() => _lastContactedAt = null);
     await _refreshNotifications();
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Last check-in removed. Next reminder counts from when you added them.',
+        ),
+      ),
+    );
   }
 
   /// Applies staged removals and uploads after the friend row exists.
@@ -382,10 +435,13 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     }
     final stagedPath = _pickedImagePath;
     if (stagedPath != null && !kIsWeb) {
-      if (previousPath != null && previousPath.isNotEmpty && !_removeStoredPhoto) {
+      if (previousPath != null &&
+          previousPath.isNotEmpty &&
+          !_removeStoredPhoto) {
         await FriendPhotoStorage.deleteIfExists(previousPath);
       }
-      final saved = await FriendPhotoStorage.saveForFriendFromPath(friendId, stagedPath);
+      final saved =
+          await FriendPhotoStorage.saveForFriendFromPath(friendId, stagedPath);
       await widget.friendService.setFriendPhotoPath(friendId, saved);
     }
   }
@@ -403,7 +459,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           builder: (context) {
             return AlertDialog(
               title: const Text('Delete friend?'),
-              content: const Text('This removes their card and clears their stored photo link.'),
+              content: const Text(
+                  'This removes their card and clears their stored photo link.'),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
@@ -426,7 +483,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     if (!mounted) {
       return;
     }
-    context.pop();
+    showAppSnackBar('Friend removed');
+    context.go('/friends');
   }
 
   /// Whether the user can clear an existing or staged photo.
@@ -436,7 +494,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     if (_pickedImagePath != null) {
       return true;
     }
-    return _storedPhotoPath != null && _storedPhotoPath!.isNotEmpty && !_removeStoredPhoto;
+    return _storedPhotoPath != null &&
+        _storedPhotoPath!.isNotEmpty &&
+        !_removeStoredPhoto;
   }
 
   /// Builds the large circular preview at the top of the form.
@@ -540,7 +600,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                             child: IconButton(
                               tooltip: 'Choose photo',
                               onPressed: _pickPhoto,
-                              icon: Icon(Icons.photo_camera_outlined, color: scheme.onPrimary),
+                              icon: Icon(Icons.photo_camera_outlined,
+                                  color: scheme.onPrimary),
                             ),
                           ),
                         ),
@@ -570,11 +631,18 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Mobile number (optional)',
                       hintText: '+1 555 123 4567',
                       helperText: 'Enables Call and WhatsApp on their profile',
-                      prefixIcon: Icon(Icons.phone_outlined),
+                      prefixIcon: const Icon(Icons.phone_outlined),
+                      suffixIcon: contactPhoneImportSupported
+                          ? IconButton(
+                              tooltip: 'Import from contacts',
+                              onPressed: _importPhoneFromContacts,
+                              icon: const Icon(Icons.contacts_outlined),
+                            )
+                          : null,
                     ),
                     validator: validateOptionalPhone,
                   ),
@@ -614,11 +682,41 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                               ? accent.withValues(alpha: 0.6)
                               : scheme.outline.withValues(alpha: 0.35),
                         ),
-                        onSelected: (_) {
-                          setState(() => _closenessLevel = level);
-                        },
+                        onSelected: (_) => _selectCloseness(level),
                       );
                     }).toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _closenessLevel.formCadenceHint,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _reminderDaysController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Reminder every (days)',
+                      hintText: '1–365',
+                      helperText:
+                          'Default for ${_closenessLevel.label}: ${_closenessLevel.defaultReminderDays} days (${_closenessLevel.cadenceBandLabel})',
+                    ),
+                    validator: validateReminderIntervalDays,
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Vary timing a little'),
+                    subtitle: Text(
+                      _useRandomCheckIn
+                          ? 'Each reminder lands near your target — a few days earlier or later so it feels natural (${_closenessLevel.cadenceBandLabel}).'
+                          : 'Reminders fire exactly every ${_reminderDaysController.text.trim().isEmpty ? '…' : _reminderDaysController.text.trim()} days.',
+                    ),
+                    value: _useRandomCheckIn,
+                    onChanged: (value) =>
+                        setState(() => _useRandomCheckIn = value),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -659,7 +757,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Last conversation',
                       hintText: 'e.g. new job, cat surgery, trip to Lisbon…',
-                      helperText: 'Short reminder of what you last talked about',
+                      helperText:
+                          'Short reminder of what you last talked about',
                     ),
                     validator: (v) => validateOptionalShortLine(v),
                   ),
@@ -669,7 +768,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                     textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(
                       labelText: 'How you met',
-                      hintText: 'e.g. college roommate, work 2019, climbing gym',
+                      hintText:
+                          'e.g. college roommate, work 2019, climbing gym',
                     ),
                     validator: (v) => validateOptionalShortLine(v),
                   ),
@@ -692,39 +792,35 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                         ),
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _reminderDaysController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Reminder every (days)',
-                      hintText: '1–365',
-                      helperText: 'How often you want a nudge to reach out',
-                    ),
-                    validator: validateReminderIntervalDays,
-                  ),
                   if (_isEditing) ...[
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: _markReachedOut,
-                      icon: const Icon(Icons.mark_chat_read_outlined),
-                      label: const Text('Reached out today'),
-                    ),
                     if (_lastContactedAt != null) ...[
-                      const SizedBox(height: 8),
                       Text(
                         lastContactedSummary(_lastContactedAt!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                             ),
                       ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: _clearLastContacted,
-                          child: const Text('Use original rhythm'),
-                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Reminders are counting from that check-in.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                       ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _confirmUndoLastCheckIn,
+                        icon: const Icon(Icons.undo_rounded, size: 20),
+                        label: const Text('Undo last check-in'),
+                      ),
+                      const SizedBox(height: 12),
                     ],
+                    Text(
+                      'To log a new check-in, open their profile and tap Log check-in.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
                   ],
                   const SizedBox(height: 20),
                   Text(
@@ -754,7 +850,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                           checkmarkColor: scheme.onPrimary,
                           selectedColor: accent.withValues(alpha: 0.28),
                           side: BorderSide(
-                            color: selected ? accent : scheme.outline.withValues(alpha: 0.35),
+                            color: selected
+                                ? accent
+                                : scheme.outline.withValues(alpha: 0.35),
                           ),
                           avatar: CircleAvatar(
                             radius: 10,
@@ -787,7 +885,8 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
                     const SizedBox(height: 24),
                     TextButton(
                       onPressed: _confirmDelete,
-                      style: TextButton.styleFrom(foregroundColor: scheme.error),
+                      style:
+                          TextButton.styleFrom(foregroundColor: scheme.error),
                       child: const Text('Delete friend'),
                     ),
                   ],
@@ -799,13 +898,10 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: FilledButton(
+              child: SavingFilledButton(
+                saving: _saving,
                 onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Text(_isEditing ? 'Save changes' : 'Save friend'),
+                label: _isEditing ? 'Save changes' : 'Save friend',
               ),
             ),
           ),

@@ -26,9 +26,17 @@ class Friends extends Table {
   /// Optional free-form notes.
   TextColumn get notes => text().nullable()();
 
-  /// How often to remind the user to reach out (1–365 days).
+  /// Base check-in cadence in days (1–365); closeness picks the default.
   IntColumn get reminderIntervalDays =>
-      integer().withDefault(const Constant(14))();
+      integer().withDefault(const Constant(30))();
+
+  /// When true, each cycle uses [activeCheckInIntervalDays] rolled from the base + level band.
+  BoolColumn get useRandomCheckIn =>
+      boolean().withDefault(const Constant(true))();
+
+  /// Interval for the current pending check-in cycle (rolled or equal to [reminderIntervalDays]).
+  IntColumn get activeCheckInIntervalDays =>
+      integer().withDefault(const Constant(30))();
 
   /// Optional absolute path to a JPEG/PNG copied into app storage.
   TextColumn get photoPath => text().nullable()();
@@ -96,7 +104,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// Applies additive upgrades and column drops when opening older DB files.
   ///

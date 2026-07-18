@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import 'check_in_interval.dart';
 
 // Birthday and calendar helpers used by list, calendar, and detail views.
 
@@ -85,38 +86,23 @@ bool isSameMonthDay(DateTime day, DateTime birthday) {
   return day.month == birthday.month && day.day == birthday.day;
 }
 
-/// Whether [referenceDate] falls on this friend's check-in rhythm day.
+/// First calendar day of this friend's check-in rhythm (always one interval after
+/// [FriendRow.createdAt] or [FriendRow.lastContactedAt] when set).
 ///
-/// Matches [NotificationScheduler]: if [FriendRow.lastContactedAt] is set,
-/// reminders follow that contact date plus multiples of the interval; otherwise
-/// the rhythm starts from local [FriendRow.createdAt].
-///
-/// Parameters:
-/// - [referenceDate]: typically today.
-/// - [friend]: persisted row.
-///
-/// Returns: `true` when this calendar day is a check-in reminder day.
+/// Adding a friend today does **not** make today a check-in day; the first one is
+/// `interval` days later.
+DateTime firstCheckInRhythmDay(FriendRow friend) {
+  return nextCheckInDueDate(friend);
+}
+
+/// Whether [referenceDate] is on or after this friend's next check-in due date.
 bool isReachOutRhythmDay(DateTime referenceDate, FriendRow friend) {
-  final interval = friend.reminderIntervalDays;
-  if (interval <= 0) {
+  if (friend.reminderIntervalDays <= 0) {
     return false;
   }
   final ref = dateOnly(referenceDate);
-  final contacted = friend.lastContactedAt?.toLocal();
-  if (contacted != null) {
-    final c = dateOnly(contacted);
-    final d = ref.difference(c).inDays;
-    if (d <= 0) {
-      return false;
-    }
-    return d % interval == 0;
-  }
-  final start = dateOnly(friend.createdAt.toLocal());
-  final d = ref.difference(start).inDays;
-  if (d < 0) {
-    return false;
-  }
-  return d % interval == 0;
+  final due = nextCheckInDueDate(friend);
+  return !ref.isBefore(due);
 }
 
 /// Short label for when check-in was last logged (for edit screen).

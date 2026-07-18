@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
-import '../models/friend_level.dart';
+import '../utils/check_in_interval.dart';
 import '../utils/date_utils.dart';
 import 'friend_avatar.dart';
 
 /// Lightweight list row: avatar, name, birthday + cadence, optional group dots and occasion chips.
 ///
-/// Closeness shows only as a slim **left accent** strip; mood, last chat, how you met, and
-/// full notes live on [FriendDetailScreen] (`/friends/:id`).
+/// Mood, last chat, how you met, and full notes live on [FriendDetailScreen] (`/friends/:id`).
 class FriendCard extends StatelessWidget {
   /// Creates a tappable card for [friend].
   ///
@@ -37,28 +36,7 @@ class FriendCard extends StatelessWidget {
   /// Optional group accent colors (small dots under the name; omit under group headers).
   final List<Color>? groupAccentColors;
 
-  /// One short line for the remind cadence.
-  ///
-  /// Parameters:
-  /// - [days]: [FriendRow.reminderIntervalDays].
-  ///
-  /// Returns: human-readable cadence.
-  String _cadenceLine(int days) {
-    if (days == 1) {
-      return 'Daily check-in reminder';
-    }
-    if (days == 7) {
-      return 'Weekly check-in reminder';
-    }
-    return 'Check-in every $days days';
-  }
-
-  /// Builds the compact card: accent strip, avatar, name, optional dots, occasions, date + cadence.
-  ///
-  /// Parameters:
-  /// - [context]: build context.
-  ///
-  /// Returns: ink surface with a left accent bar and a single content column.
+  /// Builds the compact card: avatar, name, optional dots, occasions, date + cadence.
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -68,8 +46,6 @@ class FriendCard extends StatelessWidget {
     final countdown =
         birthdayCountdownLabel(context, friend.birthday, referenceDate);
     final md = formatMonthDay(friend.birthday);
-    final level = FriendLevel.fromStorage(friend.closenessLevel);
-    final levelAccent = level.accentColor(scheme);
 
     Color cardSurface = scheme.surfaceContainerLow;
     if (isBirthday && isReachOutDay) {
@@ -90,105 +66,90 @@ class FriendCard extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: IntrinsicHeight(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 4,
-                  color: levelAccent.withValues(
-                    alpha: level == FriendLevel.regular ? 0.35 : 0.9,
-                  ),
+                FriendAvatar(
+                  name: friend.name,
+                  photoPath: friend.photoPath,
+                  radius: 28,
                 ),
+                const SizedBox(width: 14),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        FriendAvatar(
-                          name: friend.name,
-                          photoPath: friend.photoPath,
-                          radius: 28,
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                friend.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.2,
-                                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        friend.name,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            ),
+                      ),
+                      if (groupAccentColors != null &&
+                          groupAccentColors!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _GroupColorDots(colors: groupAccentColors!),
+                      ],
+                      if (isBirthday || isReachOutDay) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            if (isBirthday)
+                              _OccasionChip(
+                                icon: Icons.cake_rounded,
+                                label: 'Birthday',
+                                foreground: scheme.onPrimaryContainer,
+                                background: scheme.primaryContainer,
                               ),
-                              if (groupAccentColors != null &&
-                                  groupAccentColors!.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                _GroupColorDots(colors: groupAccentColors!),
-                              ],
-                              if (isBirthday || isReachOutDay) ...[
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  children: [
-                                    if (isBirthday)
-                                      _OccasionChip(
-                                        icon: Icons.cake_rounded,
-                                        label: 'Birthday',
-                                        foreground: scheme.onPrimaryContainer,
-                                        background: scheme.primaryContainer,
-                                      ),
-                                    if (isReachOutDay)
-                                      _OccasionChip(
-                                        icon: Icons.mark_chat_unread_rounded,
-                                        label: 'Check-in day',
-                                        foreground: scheme.onTertiaryContainer,
-                                        background: scheme.tertiaryContainer,
-                                      ),
-                                  ],
-                                ),
-                              ],
-                              const SizedBox(height: 6),
-                              Text(
-                                '$md · $countdown',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(
-                                      color: scheme.onSurfaceVariant,
-                                      height: 1.25,
-                                    ),
+                            if (isReachOutDay)
+                              _OccasionChip(
+                                icon: Icons.mark_chat_unread_rounded,
+                                label: 'Check-in day',
+                                foreground: scheme.onTertiaryContainer,
+                                background: scheme.tertiaryContainer,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _cadenceLine(friend.reminderIntervalDays),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelMedium
-                                    ?.copyWith(
-                                      color: scheme.onSurfaceVariant
-                                          .withValues(alpha: 0.85),
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Icon(
-                            Icons.chevron_right_rounded,
-                            color: scheme.outline,
-                            size: 22,
-                          ),
+                          ],
                         ),
                       ],
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$md · $countdown',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.25,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        checkInCadenceLabel(friend),
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelMedium
+                            ?.copyWith(
+                              color: scheme.onSurfaceVariant
+                                  .withValues(alpha: 0.85),
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    color: scheme.outline,
+                    size: 22,
                   ),
                 ),
               ],

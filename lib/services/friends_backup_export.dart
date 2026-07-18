@@ -17,7 +17,7 @@ class FriendsBackupExport {
   static Future<void> shareJson(FriendService friends) async {
     final rows = await friends.getAllFriends();
     final payload = <String, dynamic>{
-      'version': 2,
+      'version': 3,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'friends': rows
           .map(
@@ -26,6 +26,8 @@ class FriendsBackupExport {
               'birthday': f.birthday.toUtc().toIso8601String(),
               'notes': f.notes,
               'reminderIntervalDays': f.reminderIntervalDays,
+              'useRandomCheckIn': f.useRandomCheckIn,
+              'activeCheckInIntervalDays': f.activeCheckInIntervalDays,
               'lastContactedAt': f.lastContactedAt?.toUtc().toIso8601String(),
               'closenessLevel': f.closenessLevel,
               'moodTag': f.moodTag,

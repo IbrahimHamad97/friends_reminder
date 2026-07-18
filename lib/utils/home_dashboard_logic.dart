@@ -1,8 +1,9 @@
 import '../data/database.dart';
+import 'check_in_interval.dart';
 import 'date_utils.dart';
 
 /// Next calendar day on or after [from] when this friend's check-in rhythm fires
-/// (same rules as [isReachOutRhythmDay], including [FriendRow.lastContactedAt] anchor).
+/// (same rules as [isReachOutRhythmDay] / [firstCheckInRhythmDay]).
 ///
 /// Parameters:
 /// - [from]: anchor date (typically local "today").
@@ -10,28 +11,15 @@ import 'date_utils.dart';
 ///
 /// Returns: date-only next rhythm day, or `null` if [reminderIntervalDays] is invalid.
 DateTime? nextCheckInRhythmDayOnOrAfter(DateTime from, FriendRow friend) {
-  final interval = friend.reminderIntervalDays;
-  if (interval <= 0) {
+  if (friend.reminderIntervalDays <= 0) {
     return null;
   }
   final ref = dateOnly(from);
-  final contacted = friend.lastContactedAt?.toLocal();
-  if (contacted != null) {
-    var t = dateOnly(contacted).add(Duration(days: interval));
-    while (t.isBefore(ref)) {
-      t = t.add(Duration(days: interval));
-    }
-    return t;
+  final due = nextCheckInDueDate(friend);
+  if (!ref.isAfter(due)) {
+    return due;
   }
-  final start = dateOnly(friend.createdAt.toLocal());
-  final k = ref.difference(start).inDays;
-  if (k < 0) {
-    return start;
-  }
-  if (k % interval == 0) {
-    return ref;
-  }
-  return ref.add(Duration(days: interval - (k % interval)));
+  return ref;
 }
 
 /// Days from [from] until [target] (both date-only); non-negative when [target] is on/after [from].

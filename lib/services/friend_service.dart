@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 
 import '../data/database.dart';
+import '../models/friend_level.dart';
+import '../utils/check_in_interval.dart';
 import 'friend_photo_storage.dart';
 
 /// Coordinates friend persistence using [AppDatabase].
@@ -75,30 +77,33 @@ class FriendService {
 
   /// Inserts a new friend and returns the new row id.
   ///
-  /// Parameters:
-  /// - [name]: non-empty display name.
-  /// - [birthday]: birthday date.
-  /// - [notes]: optional notes.
-  /// - [reminderIntervalDays]: cadence for future local reminders (1–365).
-  ///
   /// Returns: generated [FriendRow.id].
   Future<int> createFriend({
     required String name,
     required DateTime birthday,
     String? notes,
-    int reminderIntervalDays = 14,
+    int reminderIntervalDays = 30,
+    bool useRandomCheckIn = true,
     String closenessLevel = 'regular',
     String? moodTag,
     String? lastChatSnippet,
     String? howWeMet,
     String? phoneNumber,
   }) {
+    final level = FriendLevel.fromStorage(closenessLevel);
+    final active = resolveActiveCheckInIntervalDays(
+      reminderIntervalDays: reminderIntervalDays,
+      level: level,
+      useRandomCheckIn: useRandomCheckIn,
+    );
     return _database.into(_database.friends).insert(
           FriendsCompanion.insert(
             name: name,
             birthday: birthday,
             notes: Value(notes),
             reminderIntervalDays: Value(reminderIntervalDays),
+            useRandomCheckIn: Value(useRandomCheckIn),
+            activeCheckInIntervalDays: Value(active),
             closenessLevel: Value(closenessLevel),
             moodTag: Value(moodTag),
             lastChatSnippet: Value(lastChatSnippet),
@@ -110,13 +115,6 @@ class FriendService {
 
   /// Updates fields for an existing friend (photo path is managed separately by the UI layer).
   ///
-  /// Parameters:
-  /// - [id]: friend to update.
-  /// - [name]: new name.
-  /// - [birthday]: new birthday.
-  /// - [notes]: optional notes (pass empty string to clear).
-  /// - [reminderIntervalDays]: reminder cadence in days.
-  ///
   /// Returns: number of rows updated (0 if id missing, 1 on success).
   Future<int> updateFriend({
     required int id,
@@ -124,18 +122,33 @@ class FriendService {
     required DateTime birthday,
     String? notes,
     required int reminderIntervalDays,
+    required bool useRandomCheckIn,
     required String closenessLevel,
     String? moodTag,
     String? lastChatSnippet,
     String? howWeMet,
     String? phoneNumber,
-  }) {
+    bool rerollActiveInterval = true,
+  }) async {
+    final level = FriendLevel.fromStorage(closenessLevel);
+    final active = rerollActiveInterval
+        ? resolveActiveCheckInIntervalDays(
+            reminderIntervalDays: reminderIntervalDays,
+            level: level,
+            useRandomCheckIn: useRandomCheckIn,
+          )
+        : (useRandomCheckIn
+            ? (await getFriendById(id))?.activeCheckInIntervalDays ?? reminderIntervalDays
+            : reminderIntervalDays);
+
     return (_database.update(_database.friends)..where((t) => t.id.equals(id))).write(
           FriendsCompanion(
             name: Value(name),
             birthday: Value(birthday),
             notes: Value(notes),
             reminderIntervalDays: Value(reminderIntervalDays),
+            useRandomCheckIn: Value(useRandomCheckIn),
+            activeCheckInIntervalDays: Value(active),
             closenessLevel: Value(closenessLevel),
             moodTag: Value(moodTag),
             lastChatSnippet: Value(lastChatSnippet),
@@ -160,15 +173,48 @@ class FriendService {
         );
   }
 
-  /// Sets when you last logged reaching out; drives the next check-in reminders.
+  /// Sets when you last logged reaching out and rolls the next check-in interval.
   ///
   /// Pass `null` to clear (rhythm falls back to creation date).
   ///
   /// Returns: number of rows updated.
-  Future<int> setLastContactedAt(int id, DateTime? when) {
+  Future<int> setLastContactedAt(int id, DateTime? when) async {
+    if (when == null) {
+      return (_database.update(_database.friends)..where((t) => t.id.equals(id))).write(
+            const FriendsCompanion(
+              lastContactedAt: Value(null),
+            ),
+          );
+    }
+    final row = await getFriendById(id);
+    if (row == null) {
+      return 0;
+    }
+    final level = FriendLevel.fromStorage(row.closenessLevel);
+    final active = resolveActiveCheckInIntervalDays(
+      reminderIntervalDays: row.reminderIntervalDays,
+      level: level,
+      useRandomCheckIn: row.useRandomCheckIn,
+    );
     return (_database.update(_database.friends)..where((t) => t.id.equals(id))).write(
           FriendsCompanion(
             lastContactedAt: Value(when),
+            activeCheckInIntervalDays: Value(active),
+          ),
+        );
+  }
+
+  /// Marks a check-in today and rolls the next reminder interval.
+  Future<int> logCheckIn(int id) {
+    return setLastContactedAt(id, DateTime.now());
+  }
+
+  /// Updates only the last-conversation snippet (empty string clears it).
+  Future<int> setLastChatSnippet(int id, String? snippet) {
+    final trimmed = snippet?.trim();
+    return (_database.update(_database.friends)..where((t) => t.id.equals(id))).write(
+          FriendsCompanion(
+            lastChatSnippet: Value(trimmed == null || trimmed.isEmpty ? null : trimmed),
           ),
         );
   }

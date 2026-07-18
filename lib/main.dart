@@ -9,6 +9,7 @@ import 'services/group_service.dart';
 import 'services/notification_scheduler.dart';
 import 'services/theme_service.dart';
 import 'theme/app_theme.dart';
+import 'utils/app_snackbar.dart';
 import 'widgets/splash_overlay.dart';
 
 /// Application entry: opens the Drift database, loads theme prefs, starts UI.
@@ -120,6 +121,7 @@ class _FriendsReminderAppState extends State<FriendsReminderApp> with WidgetsBin
   Widget build(BuildContext context) {
     return SplashOverlay(
       child: MaterialApp.router(
+        scaffoldMessengerKey: rootScaffoldMessengerKey,
         title: 'Friends Reminder',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
