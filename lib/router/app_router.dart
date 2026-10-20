@@ -7,6 +7,9 @@ import '../screens/friend_form_screen.dart';
 import '../screens/friends_list_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/group_form_screen.dart';
+import '../screens/settings_appearance_screen.dart';
+import '../screens/settings_data_screen.dart';
+import '../screens/settings_reminders_screen.dart';
 import '../screens/settings_screen.dart';
 import '../services/friend_service.dart';
 import '../services/group_service.dart';
@@ -19,7 +22,7 @@ import '../widgets/app_shell.dart';
 /// - `/home` — dashboard: upcoming birthdays and next check-ins.
 /// - `/friends` — main list with groups and ungrouped people.
 /// - `/calendar` — birthday calendar.
-/// - `/settings` — theme, reminders, export.
+/// - `/settings` — hub; nested: appearance, reminders, data.
 ///
 /// Full-screen routes (slide + fade transition) use the root navigator:
 /// - `/friends/new`, `/friends/:id` (detail), `/friends/:id/edit` (form).
@@ -28,7 +31,7 @@ import '../widgets/app_shell.dart';
 /// Parameters:
 /// - [friendService]: friend persistence for routed screens.
 /// - [groupService]: group and membership persistence.
-/// - [themeService]: persisted light/dark/system theme.
+/// - [themeService]: persisted global palette preference.
 /// - [rootNavigatorKey]: key for the root navigator (overlays, full-screen pages).
 ///
 /// Returns: configured [GoRouter] with [initialLocation] `/home`.
@@ -90,6 +93,29 @@ GoRouter createAppRouter({
                   themeService: themeService,
                   friendService: friendService,
                 ),
+                routes: [
+                  GoRoute(
+                    path: 'appearance',
+                    name: 'settings-appearance',
+                    builder: (context, state) => SettingsAppearanceScreen(
+                      themeService: themeService,
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'reminders',
+                    name: 'settings-reminders',
+                    builder: (context, state) => SettingsRemindersScreen(
+                      friendService: friendService,
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'data',
+                    name: 'settings-data',
+                    builder: (context, state) => SettingsDataScreen(
+                      friendService: friendService,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
