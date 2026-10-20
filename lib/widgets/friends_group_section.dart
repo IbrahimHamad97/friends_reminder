@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../data/database.dart';
+import '../services/group_section_prefs.dart';
 import 'friend_avatar.dart';
 import 'friend_card.dart';
+import 'local_file_avatar.dart';
 
 /// Nudges a stored group color toward the app [ColorScheme] so it sits cleanly on M3 surfaces.
 Color _harmonizedGroupAccent(ColorScheme scheme, Color stored) {
   return Color.lerp(stored, scheme.primary, 0.22)!;
 }
 
-/// One friends group: ribbon header, avatar cluster, members always visible.
-class FriendsGroupSection extends StatelessWidget {
+/// One friends group: ribbon header, avatar cluster, collapsible members.
+class FriendsGroupSection extends StatefulWidget {
   /// Creates a visual block for [group] and its [members].
   const FriendsGroupSection({
     super.key,
@@ -18,7 +20,9 @@ class FriendsGroupSection extends StatelessWidget {
     required this.members,
     required this.referenceDate,
     required this.onEditGroup,
+    required this.onDeleteGroup,
     required this.onFriendTap,
+    this.forceExpanded = false,
   });
 
   /// Group metadata (name, color).
@@ -33,17 +37,137 @@ class FriendsGroupSection extends StatelessWidget {
   /// Opens the group editor.
   final VoidCallback onEditGroup;
 
-  /// Opens a friend editor.
+  /// Deletes the group after the header confirm dialog (friends stay in the list).
+  final Future<void> Function() onDeleteGroup;
+
+  /// Opens a friend detail/editor.
   final void Function(FriendRow friend) onFriendTap;
+
+  /// When true (e.g. active search), keep the body open regardless of prefs.
+  final bool forceExpanded;
+
+  @override
+  State<FriendsGroupSection> createState() => _FriendsGroupSectionState();
+}
+
+class _FriendsGroupSectionState extends State<FriendsGroupSection>
+    with SingleTickerProviderStateMixin {
+  bool _expanded = true;
+  bool _prefsLoaded = false;
+
+  late final AnimationController _expandController;
+  late final Animation<double> _expandFactor;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 0,
+    );
+    _expandFactor = CurvedAnimation(
+      parent: _expandController,
+      curve: Curves.easeOutCubic,
+    );
+    _loadExpanded();
+  }
+
+  @override
+  void dispose() {
+    _expandController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant FriendsGroupSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.group.id != widget.group.id) {
+      _prefsLoaded = false;
+      _expanded = true;
+      _expandController.value = 0;
+      _loadExpanded();
+      return;
+    }
+    if (widget.forceExpanded != oldWidget.forceExpanded) {
+      if (widget.forceExpanded) {
+        _expandController.value = 1;
+      } else {
+        _expandController.value = _expanded ? 1 : 0;
+      }
+    }
+  }
+
+  Future<void> _loadExpanded() async {
+    final value = await GroupSectionPrefs.instance.isExpanded(widget.group.id);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _expanded = value;
+      _prefsLoaded = true;
+    });
+    // Instant (no animate) so returning from Save / stream rebuilds stay quiet.
+    _expandController.value =
+        widget.forceExpanded || value ? 1 : 0;
+  }
+
+  Future<void> _toggleExpanded() async {
+    if (widget.forceExpanded) {
+      return;
+    }
+    final next = !_expanded;
+    setState(() => _expanded = next);
+    if (next) {
+      await _expandController.forward();
+    } else {
+      await _expandController.reverse();
+    }
+    await GroupSectionPrefs.instance.setExpanded(widget.group.id, next);
+  }
+
+  /// Confirms, then runs [FriendsGroupSection.onDeleteGroup]. Expand tap stays separate.
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Delete ${widget.group.name}?'),
+            content: const Text(
+              'Friends stay in your list—only this group and its cover photo link are removed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok || !mounted) {
+      return;
+    }
+    await widget.onDeleteGroup();
+  }
+
+  bool get _showBody =>
+      widget.forceExpanded || (_prefsLoaded && _expanded);
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final accent = _harmonizedGroupAccent(scheme, Color(group.colorArgb));
-    final count = members.length;
+    final accent =
+        _harmonizedGroupAccent(scheme, Color(widget.group.colorArgb));
+    final count = widget.members.length;
     final subtitle = count == 0
         ? 'No one here yet'
         : '$count ${count == 1 ? 'person' : 'people'}';
+    final canToggle = !widget.forceExpanded && _prefsLoaded;
+    final chevronTooltip = _showBody ? 'Collapse group' : 'Expand group';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
@@ -94,125 +218,231 @@ class FriendsGroupSection extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 10, 10),
+                  padding: const EdgeInsets.fromLTRB(8, 10, 4, 6),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              group.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    color: scheme.onSurface,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.08,
-                                    letterSpacing: -0.55,
-                                  ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: GestureDetector(
+                            onTap: canToggle ? _toggleExpanded : null,
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+                              child: Semantics(
+                                button: canToggle,
+                                expanded: _showBody,
+                                label: '${widget.group.name}. $subtitle',
+                                child: Row(
+                                  children: [
+                                    _GroupAvatar(
+                                      name: widget.group.name,
+                                      photoPath: widget.group.photoPath,
+                                      accent: accent,
+                                      radius: 22,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            widget.group.name,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleLarge
+                                                ?.copyWith(
+                                                  color: scheme.onSurface,
+                                                  fontWeight: FontWeight.w800,
+                                                  height: 1.08,
+                                                  letterSpacing: -0.55,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            subtitle,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelLarge
+                                                ?.copyWith(
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (widget.members.isNotEmpty) ...[
+                                      _MemberAvatarCluster(
+                                        members: widget.members,
+                                        accent: accent,
+                                        ringColor: scheme.surfaceContainerLow,
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Icon(
+                                      _showBody
+                                          ? Icons.expand_less_rounded
+                                          : Icons.expand_more_rounded,
+                                      color: scheme.onSurfaceVariant,
+                                      semanticLabel: chevronTooltip,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              subtitle,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelLarge
-                                  ?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.2,
-                                  ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                      _MemberAvatarCluster(
-                        members: members,
-                        accent: accent,
-                        ringColor: scheme.surfaceContainerLow,
-                      ),
-                      IconButton(
-                        tooltip: 'Edit group',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: onEditGroup,
+                      PopupMenuButton<_GroupHeaderAction>(
+                        tooltip: 'Group options',
+                        padding: EdgeInsets.zero,
                         icon: Icon(
-                          Icons.edit_outlined,
+                          Icons.more_vert_rounded,
                           size: 22,
                           color: scheme.onSurfaceVariant,
                         ),
+                        onSelected: (action) {
+                          switch (action) {
+                            case _GroupHeaderAction.edit:
+                              widget.onEditGroup();
+                            case _GroupHeaderAction.delete:
+                              _confirmDelete();
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: _GroupHeaderAction.edit,
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit_outlined, size: 20),
+                                SizedBox(width: 12),
+                                Text('Edit group'),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: _GroupHeaderAction.delete,
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline_rounded, size: 20),
+                                SizedBox(width: 12),
+                                Text('Delete group'),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-            SizedBox(
-              height: 14,
-              child: CustomPaint(
-                painter: _WaveRibbonPainter(
-                  stroke: accent.withValues(alpha: 0.55),
-                  fill: Color.lerp(scheme.surfaceContainerLow, accent, 0.07)!,
+            ClipRect(
+              child: AnimatedBuilder(
+                animation: _expandFactor,
+                builder: (context, child) {
+                  final factor = widget.forceExpanded
+                      ? 1.0
+                      : _expandFactor.value;
+                  if (factor <= 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    heightFactor: factor,
+                    child: child,
+                  );
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 14,
+                      child: CustomPaint(
+                        painter: _WaveRibbonPainter(
+                          stroke: accent.withValues(alpha: 0.55),
+                          fill: Color.lerp(
+                            scheme.surfaceContainerLow,
+                            accent,
+                            0.07,
+                          )!,
+                        ),
+                      ),
+                    ),
+                    if (widget.members.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.rocket_launch_outlined,
+                              size: 26,
+                              color: accent.withValues(alpha: 0.75),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Open Edit to invite people — they will land in this little crew.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                      height: 1.45,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: scheme.surface.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: scheme.outlineVariant
+                                  .withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(10, 12, 10, 6),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0;
+                                    i < widget.members.length;
+                                    i++)
+                                  FriendCard(
+                                    key: ValueKey(widget.members[i].id),
+                                    friend: widget.members[i],
+                                    referenceDate: widget.referenceDate,
+                                    groupAccentColors: null,
+                                    onTap: () => widget
+                                        .onFriendTap(widget.members[i]),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
-            if (members.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.rocket_launch_outlined,
-                      size: 26,
-                      color: accent.withValues(alpha: 0.75),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Open Edit to invite people — they will land in this little crew.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.45,
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: scheme.surface.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: scheme.outlineVariant.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 10, 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < members.length; i++)
-                          FriendCard(
-                            key: ValueKey(members[i].id),
-                            friend: members[i],
-                            referenceDate: referenceDate,
-                            groupAccentColors: null,
-                            onTap: () => onFriendTap(members[i]),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -220,7 +450,52 @@ class FriendsGroupSection extends StatelessWidget {
   }
 }
 
-/// Overlapping face pile for up to four members.
+enum _GroupHeaderAction { edit, delete }
+
+/// Small circular group cover: photo, or accent + groups icon.
+class _GroupAvatar extends StatelessWidget {
+  const _GroupAvatar({
+    required this.name,
+    required this.photoPath,
+    required this.accent,
+    required this.radius,
+  });
+
+  final String name;
+  final String? photoPath;
+  final Color accent;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = CircleAvatar(
+      radius: radius,
+      backgroundColor: accent.withValues(alpha: 0.28),
+      child: Icon(
+        Icons.groups_rounded,
+        size: radius * 1.15,
+        color: accent,
+      ),
+    );
+    final path = photoPath;
+    if (path != null && path.isNotEmpty) {
+      return Semantics(
+        label: '$name group photo',
+        child: buildLocalFileAvatar(
+          absolutePath: path,
+          radius: radius,
+          fallback: fallback,
+        ),
+      );
+    }
+    return Semantics(
+      label: '$name group',
+      child: fallback,
+    );
+  }
+}
+
+/// Overlapping face pile for up to four members (omitted when empty).
 class _MemberAvatarCluster extends StatelessWidget {
   const _MemberAvatarCluster({
     required this.members,
@@ -238,26 +513,7 @@ class _MemberAvatarCluster extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (members.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(right: 4),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: accent.withValues(alpha: 0.45),
-              width: 2,
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Icon(
-              Icons.add_rounded,
-              size: 22,
-              color: accent.withValues(alpha: 0.85),
-            ),
-          ),
-        ),
-      );
+      return const SizedBox.shrink();
     }
 
     final shown = members.take(4).toList();

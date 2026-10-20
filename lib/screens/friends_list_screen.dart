@@ -4,15 +4,16 @@ import 'package:go_router/go_router.dart';
 import '../data/database.dart';
 import '../services/friend_service.dart';
 import '../services/group_service.dart';
+import '../utils/app_snackbar.dart';
 import '../utils/friend_search.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/friends_group_section.dart';
 import '../widgets/friend_card.dart';
 
-/// Main friends hub: **groups** (ribbon sections + member list), then **“Not in a group”**.
+/// Main friends hub: **groups** (including empty ones) + member list, then **“Not in a group”**.
 ///
-/// Search filters all visible cards. The FAB opens a sheet to add a **friend** or a **group**.
-/// **Edit** on a group opens the group form; friend cards open the friend editor.
+/// Search filters friend cards. The FAB opens a sheet to add a **friend** or a **group**.
+/// Group header ⋯ offers Edit / Delete; friend cards open friend detail.
 class FriendsListScreen extends StatefulWidget {
   /// Creates the friends hub screen.
   ///
@@ -50,6 +51,8 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text);
     });
+    // Heal friends hidden after a group delete left orphan membership links.
+    widget.groupService.purgeOrphanGroupLinks();
   }
 
   /// Disposes the search controller.
@@ -141,9 +144,14 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                   final links = linkSnap.data ?? <FriendGroupLinkRow>[];
                   final colorMap = _friendIdToColors(groups, links);
 
+                  final knownGroupIds = {for (final g in groups) g.id};
                   final groupToFriendIds = <int, List<int>>{};
                   final inAnyGroup = <int>{};
                   for (final l in links) {
+                    // Ignore orphan links (group deleted but FK cascade missed).
+                    if (!knownGroupIds.contains(l.groupId)) {
+                      continue;
+                    }
                     if (!friendById.containsKey(l.friendId)) {
                       continue;
                     }
@@ -163,7 +171,9 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  if (friends.isEmpty) {
+                  // Empty groups still belong on this tab — only show the full
+                  // empty state when there are neither friends nor groups.
+                  if (friends.isEmpty && groups.isEmpty) {
                     return CustomScrollView(
                       slivers: [
                         SliverPadding(
@@ -195,7 +205,7 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                     );
                   }
 
-                  if (filtered.isEmpty) {
+                  if (filtered.isEmpty && friends.isNotEmpty) {
                     return CustomScrollView(
                       slivers: [
                         SliverPadding(
@@ -345,8 +355,16 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                           group: g,
                           members: members,
                           referenceDate: today,
+                          forceExpanded: _searchQuery.trim().isNotEmpty,
                           onEditGroup: () =>
                               context.push('/groups/${g.id}/edit'),
+                          onDeleteGroup: () async {
+                            await widget.groupService.deleteGroup(g.id);
+                            if (!mounted) {
+                              return;
+                            }
+                            showAppSnackBar('Group removed');
+                          },
                           onFriendTap: (f) => context.push('/friends/${f.id}'),
                         ),
                       ),
@@ -388,7 +406,8 @@ class _FriendsListScreenState extends State<FriendsListScreen> {
                                 friend: friend,
                                 referenceDate: today,
                                 groupAccentColors: colorMap[friend.id],
-                                onTap: () => context.push('/friends/${friend.id}'),
+                                onTap: () =>
+                                    context.push('/friends/${friend.id}'),
                               );
                             },
                             childCount: ungrouped.length,

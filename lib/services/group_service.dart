@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/database.dart';
 import 'group_photo_storage.dart';
+import 'group_section_prefs.dart';
 
 /// Coordinates [GroupRow] rows and [FriendGroupLinkRow] membership in [AppDatabase].
 ///
@@ -177,7 +178,7 @@ class GroupService {
   ///
   /// Parameters:
   /// - [id]: group id.
-  /// - [photoPath]: Cloudinary HTTPS URL, legacy disk path, or `null` to clear.
+  /// - [photoPath]: absolute local path, leftover remote URL, or `null` to clear.
   ///
   /// Returns: number of rows updated.
   Future<int> setGroupPhotoPath(int id, String? photoPath) {
@@ -186,7 +187,11 @@ class GroupService {
         );
   }
 
-  /// Deletes a group, its membership links (cascade), and any **local** cover file (remote URLs are not deleted on Cloudinary).
+  /// Deletes a group, its membership links, and any **local** cover file
+  /// (leftover remote URLs are dropped from the DB only).
+  ///
+  /// Links are removed explicitly so friends reappear under “Not in a group”
+  /// even when SQLite foreign-key cascade is off.
   ///
   /// Parameters:
   /// - [id]: group id.
@@ -194,11 +199,27 @@ class GroupService {
   /// Returns: number of group rows deleted.
   Future<int> deleteGroup(int id) async {
     final row = await getGroupById(id);
+    await (_db.delete(_db.friendGroupLinks)..where((l) => l.groupId.equals(id)))
+        .go();
     final n = await (_db.delete(_db.groups)..where((t) => t.id.equals(id))).go();
-    if (n > 0 && row?.photoPath != null) {
-      await GroupPhotoStorage.deleteIfExists(row!.photoPath);
+    if (n > 0) {
+      await GroupSectionPrefs.instance.forget(id);
+      if (row?.photoPath != null) {
+        await GroupPhotoStorage.deleteIfExists(row!.photoPath);
+      }
     }
     return n;
+  }
+
+  /// Removes membership rows that point at a group that no longer exists.
+  ///
+  /// Returns: number of orphan link rows deleted.
+  Future<int> purgeOrphanGroupLinks() async {
+    return _db.customUpdate(
+      'DELETE FROM friend_group_links WHERE group_id NOT IN (SELECT id FROM groups)',
+      updates: {_db.friendGroupLinks},
+      updateKind: UpdateKind.delete,
+    );
   }
 
   /// Lists friend ids that belong to [groupId].
