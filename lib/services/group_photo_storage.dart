@@ -1,15 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../utils/picked_photo_reduce.dart';
-import 'cloudinary_upload_service.dart';
 
-/// Client-side compress then Cloudinary upload for group cover images.
+/// Client-side compress then on-device save for group cover images.
 class GroupPhotoStorage {
   GroupPhotoStorage._();
 
-  /// Uploads a picked file for [groupId] after app-side resize/compress.
+  /// Saves a picked file for [groupId] after app-side resize/compress.
   static Future<String> saveForGroupFromPath(int groupId, String sourcePath) {
     return saveForGroup(groupId, File(sourcePath));
   }
@@ -23,11 +23,13 @@ class GroupPhotoStorage {
       source,
       PickedPhotoKind.groupCover,
     );
-    return CloudinaryUploadService.uploadImage(
-      bytes: bytes,
-      filename: 'group_$groupId.jpg',
-      subfolder: 'groups',
-    );
+    final dir = await _groupsPhotosDir();
+    final dest = File('${dir.path}/group_$groupId.jpg');
+    if (await dest.exists()) {
+      await dest.delete();
+    }
+    await dest.writeAsBytes(bytes, flush: true);
+    return dest.path;
   }
 
   /// Deletes a local file when [path] is on disk; no-op for remote URLs.
@@ -39,6 +41,15 @@ class GroupPhotoStorage {
     if (await file.exists()) {
       await file.delete();
     }
+  }
+
+  static Future<Directory> _groupsPhotosDir() async {
+    final root = await getApplicationDocumentsDirectory();
+    final dir = Directory('${root.path}/photos/groups');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
   }
 
   static bool _looksLikeHttpUrl(String path) {

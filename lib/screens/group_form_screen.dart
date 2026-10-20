@@ -294,11 +294,11 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     }
   }
 
-  /// Applies [_removeStoredPhoto] and/or uploads [_pickedImagePath] to Cloudinary for [groupId].
+  /// Applies [_removeStoredPhoto] and/or saves [_pickedImagePath] into app storage for [groupId].
   ///
   /// Parameters:
   /// - [groupId]: saved group primary key.
-  /// - [previousPath]: last known photo URL or legacy disk path from the database, if any.
+  /// - [previousPath]: last known local path or leftover remote URL from the database, if any.
   ///
   /// Returns: future completing after upload/delete attempts and DB updates.
   Future<void> _syncPhotoAfterSave({

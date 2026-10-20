@@ -1,21 +1,21 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../utils/picked_photo_reduce.dart';
-import 'cloudinary_upload_service.dart';
 
-/// Compresses picked images client-side, uploads to Cloudinary, returns HTTPS URLs.
+/// Compresses picked images client-side and stores them under app documents.
 class FriendPhotoStorage {
   FriendPhotoStorage._();
 
-  /// Uploads a file at [sourcePath] for [friendId] after resize/JPEG re-encode.
+  /// Saves a file at [sourcePath] for [friendId] after resize/JPEG re-encode.
   ///
   /// Parameters:
-  /// - [friendId]: owning friend row id (used in the upload filename hint).
+  /// - [friendId]: owning friend row id (used in the on-disk filename).
   /// - [sourcePath]: absolute path from the image picker / crop temp file.
   ///
-  /// Returns: `https://…` secure URL from Cloudinary.
+  /// Returns: absolute path to the JPEG in app storage.
   static Future<String> saveForFriendFromPath(int friendId, String sourcePath) async {
     return saveForFriend(friendId, File(sourcePath));
   }
@@ -29,11 +29,13 @@ class FriendPhotoStorage {
       source,
       PickedPhotoKind.friendAvatar,
     );
-    return CloudinaryUploadService.uploadImage(
-      bytes: bytes,
-      filename: 'friend_$friendId.jpg',
-      subfolder: 'friends',
-    );
+    final dir = await _friendsPhotosDir();
+    final dest = File('${dir.path}/friend_$friendId.jpg');
+    if (await dest.exists()) {
+      await dest.delete();
+    }
+    await dest.writeAsBytes(bytes, flush: true);
+    return dest.path;
   }
 
   /// Deletes a local file when [path] is a filesystem path; no-op for remote URLs.
@@ -45,6 +47,15 @@ class FriendPhotoStorage {
     if (await file.exists()) {
       await file.delete();
     }
+  }
+
+  static Future<Directory> _friendsPhotosDir() async {
+    final root = await getApplicationDocumentsDirectory();
+    final dir = Directory('${root.path}/photos/friends');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
   }
 
   static bool _looksLikeHttpUrl(String path) {

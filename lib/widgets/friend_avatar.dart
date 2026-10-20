@@ -4,11 +4,11 @@ import 'local_file_avatar.dart';
 
 /// Circular avatar: optional local photo file, otherwise first letter of [name].
 class FriendAvatar extends StatelessWidget {
-  /// Creates an avatar for [name] with optional [photoPath] (Cloudinary URL or legacy disk path).
+  /// Creates an avatar for [name] with optional [photoPath] (local file or legacy HTTPS URL).
   ///
   /// Parameters:
   /// - [name]: source string; first character is shown when no usable photo.
-  /// - [photoPath]: optional `https://…` from [FriendPhotoStorage] or older local path.
+  /// - [photoPath]: optional absolute path from [FriendPhotoStorage], or a leftover remote URL.
   /// - [radius]: circle radius; defaults to 24 logical pixels.
   /// - [background]: optional override for letter fallback.
   /// - [foreground]: optional override for letter fallback.
@@ -24,7 +24,7 @@ class FriendAvatar extends StatelessWidget {
   /// Friend display name driving the initial letter fallback.
   final String name;
 
-  /// Optional photo: HTTPS URL (Cloudinary) or legacy local file path.
+  /// Optional photo: local file path, or a leftover remote URL until replaced.
   final String? photoPath;
 
   /// Radius of the circular avatar.
