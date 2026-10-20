@@ -301,6 +301,10 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
       if (_isEditing) {
         savedId = widget.friendId!;
         final previous = await widget.friendService.getFriendById(savedId);
+        final cadenceChanged = previous == null ||
+            previous.reminderIntervalDays != reminderDays ||
+            previous.useRandomCheckIn != _useRandomCheckIn ||
+            previous.closenessLevel != _closenessLevel.storageKey;
         await widget.friendService.updateFriend(
           id: savedId,
           name: name,
@@ -313,6 +317,7 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
           lastChatSnippet: lastChat,
           howWeMet: howWeMet,
           phoneNumber: phone,
+          rerollActiveInterval: cadenceChanged,
         );
         await _syncPhotoAfterSave(
           friendId: savedId,
@@ -420,11 +425,11 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     );
   }
 
-  /// Applies staged removals and uploads after the friend row exists.
+  /// Applies staged removals and on-device photo saves after the friend row exists.
   ///
   /// Parameters:
-  /// - [friendId]: primary key used in the upload filename hint.
-  /// - [previousPath]: last persisted URL or legacy disk path, if any.
+  /// - [friendId]: primary key used in the on-disk filename.
+  /// - [previousPath]: last persisted local path or leftover remote URL, if any.
   Future<void> _syncPhotoAfterSave({
     required int friendId,
     required String? previousPath,
