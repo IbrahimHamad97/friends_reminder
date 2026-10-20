@@ -1,6 +1,6 @@
 # Friends Reminder
 
-Private Flutter app for remembering **friend birthdays** and **check-in rhythms** (how often you want to be nudged to reach out). Friend and group data stay on-device in SQLite via **Drift**; **profile/cover photos** upload to **Cloudinary** (HTTPS URLs in the DB). Reminders use **local notifications** (no account or backend beyond image hosting).
+Private Flutter app for remembering **friend birthdays** and **check-in rhythms** (how often you want to be nudged to reach out). Friend and group data (including **profile/cover photos**) stay **on-device** in SQLite via **Drift** and app document storage. Reminders use **local notifications** (no account or cloud backend).
 
 ---
 
@@ -39,8 +39,7 @@ Core loop: add people → get birthday + check-in reminders → optionally tap *
 | Local DB               | Drift (SQLite)                                                                                                                                                                                            |
 | Navigation             | `go_router` (stateful shell for tabs + modal-style full screens for forms)                                                                                                                                |
 | Fonts                  | `google_fonts` (Plus Jakarta Sans)                                                                                                                                                                        |
-| Images                 | `image_picker`; `crop_your_image` circular 1:1 crop; client-side resize/JPEG via `PickedPhotoReducer`; **`http` multipart upload** to **Cloudinary** (`FriendPhotoStorage` / `GroupPhotoStorage`, `CloudinaryUploadService`; see [Photos](#photos-cloudinary--client-side-processing)) |
-| Env / networking       | `flutter_dotenv` (`assets/config/cloudinary.env`); **`http`** for uploads; **`Image.network`** / **`NetworkImage`** for URLs |
+| Images                 | `image_picker`; `crop_your_image` circular 1:1 crop; client-side resize/JPEG via `PickedPhotoReducer`; on-device save via `FriendPhotoStorage` / `GroupPhotoStorage` (see [Photos](#photos-on-device--client-side-processing)) |
 | Notifications          | `flutter_local_notifications` + `timezone` / `flutter_timezone`                                                                                                                                           |
 | Sharing export         | `share_plus`                                                                                                                                                                                              |
 | Color picking (groups) | `flutter_colorpicker`                                                                                                                                                                                     |
@@ -62,7 +61,7 @@ Defined in `lib/data/database.dart` (schema version **6**).
 | `birthday`             | `DateTime` (year may be arbitrary; UI treats recurrence by month/day)                        |
 | `notes`                | Optional free text                                                                           |
 | `reminderIntervalDays` | Check-in cadence (default 14)                                                                |
-| `photoPath`            | Optional **HTTPS** image URL (Cloudinary `secure_url`); legacy local paths are still shown if present until replaced |
+| `photoPath`            | Optional absolute path to a JPEG under app documents; leftover remote URLs still render until the user replaces the photo |
 | `lastContactedAt`      | When user last marked “reached out”; anchors reminder rhythm with `lastContactedAt` when set |
 | `closenessLevel`       | `bestie` · `close` · `regular` (default) · `casual` — see `FriendLevel` in `lib/models/friend_level.dart` |
 | `moodTag`              | Optional: `good_place`, `busy`, `tough_time`, `celebrating` — see `FriendMood` |
@@ -80,7 +79,7 @@ Defined in `lib/data/database.dart` (schema version **6**).
 | `id`        | Primary key               |
 | `name`      | Group label               |
 | `colorArgb` | Stored `Color` value      |
-| `photoPath` | Optional cover image URL (same semantics as friends) |
+| `photoPath` | Optional cover image path (same semantics as friends) |
 | `createdAt` | Metadata                  |
 
 
@@ -107,12 +106,12 @@ lib/
 ├── router/app_router.dart    # GoRouter: shell + form routes
 ├── theme/app_theme.dart      # Light/dark M3 themes (coral seed)
 ├── screens/                  # Full-page UI
-├── services/                 # FriendService, GroupService, ThemeService, notifications, export, Cloudinary upload
+├── services/                 # FriendService, GroupService, ThemeService, notifications, export, local photo storage
 ├── utils/                    # date_utils, search, validators, home_dashboard_logic, etc.
 └── widgets/                  # AppShell, FriendCard, FriendAvatar, FriendsGroupSection, …
 ```
 
-- **Services** encapsulate Drift streams and writes (`FriendService`, `GroupService`), photo **Cloudinary** uploads (`CloudinaryUploadService`, `cloudinary_config.dart`), and local-only export/notifications.
+- **Services** encapsulate Drift streams and writes (`FriendService`, `GroupService`), on-device photo files (`FriendPhotoStorage`, `GroupPhotoStorage`), and local-only export/notifications.
 - **Screens** bind streams and navigation; heavy forms live in `friend_form_screen.dart` and `group_form_screen.dart`.
 - **Utils** keep birthday math and check-in rhythm logic consistent between UI and `NotificationScheduler` (`date_utils.dart`, `home_dashboard_logic.dart`).
 
@@ -161,11 +160,11 @@ lib/
 
 ### Friend form (`lib/screens/friend_form_screen.dart`)
 
-- Name, optional **mobile number**, birthday, **closeness** (Bestie / Close / Regular / Acquaintance), optional **mood** tag, **last conversation** + **how you met** lines, notes, photo (gallery → **circular crop** → Cloudinary), reminder interval, **Reached out**, **group membership** multi-select.
+- Name, optional **mobile number**, birthday, **closeness** (Bestie / Close / Regular / Acquaintance), optional **mood** tag, **last conversation** + **how you met** lines, notes, photo (gallery → **circular crop** → app storage), reminder interval, **Reached out**, **group membership** multi-select.
 
 ### Group form (`lib/screens/group_form_screen.dart`)
 
-- Name, color, optional photo (same **circular crop** flow, then **Cloudinary**), member checklist.
+- Name, color, optional photo (same **circular crop** flow, then **app storage**), member checklist.
 
 ### Friend cards (`lib/widgets/friend_card.dart`)
 
@@ -193,22 +192,14 @@ lib/
 
 - Warm coral-forward palette; M3 surfaces; splash overlay wired from `main.dart` as applicable.
 
-### Photos (Cloudinary + client-side processing)
+### Photos (on-device + client-side processing)
 
-- **Cloudinary**: after crop (non-web), the app **resizes/re-encodes JPEG** (`PickedPhotoReducer`), then **POST**s bytes to `https://api.cloudinary.com/v1_1/<cloud_name>/image/upload` with an **unsigned upload preset**. The JSON **`secure_url`** is stored in `photoPath` (same column name as before).
-- **Configuration** (pick one or combine; `--dart-define` wins over the env file when both set a value):
-  1. Edit **`assets/config/cloudinary.env`** in the project (bundled at build time): `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET`, optional `CLOUDINARY_FOLDER` (default `friends_reminder`). **Do not commit real secrets** to a public repo—use a private branch or local-only edits, or rely on `dart-define` in CI.
-  2. Or pass **`--dart-define=CLOUDINARY_CLOUD_NAME=...`** and **`--dart-define=CLOUDINARY_UPLOAD_PRESET=...`** (and optionally `CLOUDINARY_FOLDER`) when running/building.
-- **Cloudinary dashboard setup** (once per account):
-  1. Copy your **cloud name** from the dashboard.
-  2. **Settings → Upload → Upload presets → Add upload preset**: choose **Unsigned** (client-side upload from the app), enable **unsigned** uploading, and restrict to **Image** if you like. Note the **preset name** → `CLOUDINARY_UPLOAD_PRESET`.
-  3. Optional: set a default folder in the preset, or rely on the app’s `folder` field (`<CLOUDINARY_FOLDER>/friends` or `…/groups`).
-- **Where uploads go**: `FriendPhotoStorage` → folder segment `friends`; `GroupPhotoStorage` → `groups`.
-- **Display**: `FriendAvatar` / form previews use **`buildLocalFileAvatar`**, which treats `http(s)://` as **`Image.network`** / **`Image.file`** with **`errorBuilder`** so a **broken or missing image falls back** to the caller’s widget (initial letter on friends, icon on group cover).
-- **Deletion**: removing a friend/group clears the DB field; **remote images are not deleted** on Cloudinary (optional follow-up: Admin API / authenticated delete). **Local** paths are still deleted when encountered.
-- **Android**: `INTERNET` permission is declared for upload + image load. **macOS**: sandbox **Outgoing connections (Client)** entitlement is enabled for the same.
-- After a gallery pick (non-web), **`CircularCropScreen`** (`lib/screens/circular_crop_screen.dart`): **`crop_your_image`** with **`withCircleUi: true`**, 1:1, pinch/zoom; cropped bytes go to a temp file, then **`PickedPhotoReducer`** runs before upload.
-- **`lib/utils/picked_photo_reduce.dart`**: max long edge **1024 px** (friend) / **1600 px** (group), JPEG quality **~80** / **~82**, strips most **EXIF / GPS** before upload.
+- After crop (non-web), the app **resizes/re-encodes JPEG** (`PickedPhotoReducer`), then writes bytes under the app documents directory. The absolute path is stored in `photoPath`.
+- **Where files go**: `FriendPhotoStorage` → `photos/friends/friend_<id>.jpg`; `GroupPhotoStorage` → `photos/groups/group_<id>.jpg` (via `path_provider` application documents).
+- **Display**: `FriendAvatar` / form previews use **`buildLocalFileAvatar`** — **`Image.file`** for local paths; leftover `http(s)://` values still use **`Image.network`** until replaced. **`errorBuilder`** falls back to the caller’s widget (initial letter on friends, icon on group cover).
+- **Deletion**: removing a friend/group (or clearing a photo) deletes the local file when `photoPath` is on disk. Uninstall removes app storage with the app.
+- After a gallery pick (non-web), **`CircularCropScreen`** (`lib/screens/circular_crop_screen.dart`): **`crop_your_image`** with **`withCircleUi: true`**, 1:1, pinch/zoom; cropped bytes go to a temp file, then **`PickedPhotoReducer`** runs before save.
+- **`lib/utils/picked_photo_reduce.dart`**: max long edge **1024 px** (friend) / **1600 px** (group), JPEG quality **~80** / **~82**, strips most **EXIF / GPS**.
 - **Android / iOS / macOS**: tries **`FlutterImageCompress`** first; **fallback** `image` decode → scale → `encodeJpg` (Windows/Linux).
 - Picker uses **`maxWidth: 2400`** before processing to limit decode memory.
 
