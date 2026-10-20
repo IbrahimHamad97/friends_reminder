@@ -95,6 +95,32 @@ DateTime firstCheckInRhythmDay(FriendRow friend) {
   return nextCheckInDueDate(friend);
 }
 
+/// Calendar day for the next check-in notification.
+///
+/// [dueDay] is the rhythm due date ([nextCheckInDueDate]). When that day's
+/// [hour]:[minute] is still ahead of [now], the notification stays on [dueDay].
+/// When that time has passed, the next fire is the upcoming reminder clock
+/// (later today, otherwise tomorrow) so an overdue check-in is not pushed a
+/// full interval into the future.
+DateTime nextCheckInNotificationDay({
+  required DateTime dueDay,
+  required DateTime now,
+  required int hour,
+  required int minute,
+}) {
+  final dueAt = DateTime(dueDay.year, dueDay.month, dueDay.day, hour, minute);
+  if (dueAt.isAfter(now)) {
+    return DateTime(dueDay.year, dueDay.month, dueDay.day);
+  }
+  final todayAt = DateTime(now.year, now.month, now.day, hour, minute);
+  if (todayAt.isAfter(now)) {
+    return DateTime(now.year, now.month, now.day);
+  }
+  final tomorrow =
+      DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+  return DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
+}
+
 /// Whether [referenceDate] is on or after this friend's next check-in due date.
 bool isReachOutRhythmDay(DateTime referenceDate, FriendRow friend) {
   if (friend.reminderIntervalDays <= 0) {

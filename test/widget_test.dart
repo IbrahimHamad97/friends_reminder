@@ -10,9 +10,7 @@ import 'package:friends_reminder/services/theme_service.dart';
 
 void main() {
   testWidgets('Home tab renders', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({
-      'home_notification_permission_prompt_done': true,
-    });
+    SharedPreferences.setMockInitialValues({});
     final database = AppDatabase(NativeDatabase.memory());
     final friendService = FriendService(database);
     final groupService = GroupService(database);
