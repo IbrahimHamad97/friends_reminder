@@ -34,6 +34,7 @@ class FriendsBackupExport {
               'lastChatSnippet': f.lastChatSnippet,
               'howWeMet': f.howWeMet,
               'phoneNumber': f.phoneNumber,
+              'isFrozen': f.isFrozen,
               'createdAt': f.createdAt.toUtc().toIso8601String(),
             },
           )

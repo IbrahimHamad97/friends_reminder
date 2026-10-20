@@ -65,7 +65,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: StreamBuilder<List<FriendRow>>(
         stream: widget.friendService.watchAllFriends(),
         builder: (context, snapshot) {
-          final friends = snapshot.data ?? <FriendRow>[];
+          final friends = (snapshot.data ?? <FriendRow>[])
+              .where((f) => !f.isFrozen)
+              .toList(growable: false);
           final selectedFriends =
               friends.where((f) => isSameMonthDay(_selectedDay, f.birthday)).toList();
           final upcoming = upcomingBirthdaysWithinHorizon(

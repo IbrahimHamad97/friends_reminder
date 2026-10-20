@@ -19,6 +19,7 @@ import '../utils/date_utils.dart'
         isReachOutRhythmDay,
         isSameMonthDay,
         lastContactedSummary;
+import '../utils/app_snackbar.dart';
 import '../utils/friend_phone.dart';
 import '../widgets/check_in_action_card.dart';
 import '../widgets/friend_avatar.dart';
@@ -112,6 +113,44 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
       return;
     }
     await _clearLastContacted(context);
+  }
+
+  Future<void> _setFrozen(BuildContext context, FriendRow friend, bool frozen) async {
+    final ok = frozen
+        ? await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text('Freeze ${friend.name}?'),
+                content: const Text(
+                  'Reminders pause and they leave Home and Calendar loops. '
+                  'They stay in your Friends list—unfreeze anytime from this profile.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Freeze'),
+                  ),
+                ],
+              ),
+            ) ??
+            false
+        : true;
+    if (!ok || !context.mounted) {
+      return;
+    }
+    await widget.friendService.setFrozen(widget.friendId, frozen);
+    await _reschedule();
+    if (context.mounted) {
+      showAppSnackBar(
+        frozen
+            ? '${friend.name} frozen · reminders paused'
+            : '${friend.name} unfrozen · reminders back on',
+      );
+    }
   }
 
   Future<void> _clearLastContacted(BuildContext context) async {
@@ -223,6 +262,35 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                         onPressed: () => context.pop(),
                       ),
                       const Spacer(),
+                      if (f.isFrozen)
+                        FilledButton.tonalIcon(
+                          onPressed: () => _setFrozen(context, f, false),
+                          icon: const Icon(Icons.ac_unit_rounded),
+                          label: const Text('Unfreeze'),
+                        )
+                      else
+                        PopupMenuButton<_DetailMenuAction>(
+                          tooltip: 'More',
+                          onSelected: (action) {
+                            switch (action) {
+                              case _DetailMenuAction.freeze:
+                                _setFrozen(context, f, true);
+                            }
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                              value: _DetailMenuAction.freeze,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.ac_unit_rounded, size: 20),
+                                  SizedBox(width: 12),
+                                  Text('Freeze friend'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(width: 8),
                       FilledButton.tonalIcon(
                         onPressed: () => context.push('/friends/${f.id}/edit'),
                         icon: const Icon(Icons.edit_outlined),
@@ -276,6 +344,13 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                                     foreground: mood.chipForeground(scheme),
                                     background: mood.chipBackground(scheme),
                                   ),
+                                if (f.isFrozen)
+                                  _DetailChip(
+                                    icon: Icons.ac_unit_rounded,
+                                    label: 'Frozen',
+                                    foreground: scheme.onSecondaryContainer,
+                                    background: scheme.secondaryContainer,
+                                  ),
                               ],
                             ),
                           ],
@@ -285,7 +360,19 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                   ),
                 ),
               ),
-              if (isBirthday)
+              if (f.isFrozen)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  sliver: SliverToBoxAdapter(
+                    child: _OccasionBanner(
+                      icon: Icons.ac_unit_rounded,
+                      label: 'Frozen · reminders paused',
+                      color: scheme.secondaryContainer,
+                      onText: scheme.onSecondaryContainer,
+                    ),
+                  ),
+                )
+              else if (isBirthday)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
                   sliver: SliverToBoxAdapter(
@@ -297,17 +384,18 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
                     ),
                   ),
                 ),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(24, isBirthday ? 4 : 0, 24, 8),
-                sliver: SliverToBoxAdapter(
-                  child: CheckInActionCard(
-                    friendName: f.name,
-                    isDue: isReachOut,
-                    isLoading: _loggingCheckIn,
-                    onLogCheckIn: () => _logCheckIn(context, f),
+              if (!f.isFrozen)
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(24, isBirthday ? 4 : 0, 24, 8),
+                  sliver: SliverToBoxAdapter(
+                    child: CheckInActionCard(
+                      friendName: f.name,
+                      isDue: isReachOut,
+                      isLoading: _loggingCheckIn,
+                      onLogCheckIn: () => _logCheckIn(context, f),
+                    ),
                   ),
                 ),
-              ),
               if (phone.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -520,6 +608,8 @@ class _FriendDetailScreenState extends State<FriendDetailScreen> {
     );
   }
 }
+
+enum _DetailMenuAction { freeze }
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({this.title, required this.child});

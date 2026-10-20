@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+
+import 'database_connection_stub.dart'
+    if (dart.library.io) 'database_connection_io.dart' as db_connection;
 
 part 'database.g.dart';
 
@@ -60,6 +57,9 @@ class Friends extends Table {
   /// Optional mobile number (digits / + for display; used for call + WhatsApp on detail).
   TextColumn get phoneNumber => text().nullable()();
 
+  /// When true, reminders are paused and the friend is hidden from Home / Calendar loops.
+  BoolColumn get isFrozen => boolean().withDefault(const Constant(false))();
+
   /// When this row was first created (UTC).
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -101,57 +101,17 @@ class AppDatabase extends _$AppDatabase {
   /// - [executor]: optional in-memory or test executor.
   ///
   /// Returns: an opened [AppDatabase] ready for queries.
-  AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
+  AppDatabase([QueryExecutor? executor])
+      : super(executor ?? db_connection.openConnection());
 
+  /// Always `1` until a production release — wipe/reinstall in dev when the schema changes.
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 1;
 
-  /// Applies additive upgrades and column drops when opening older DB files.
-  ///
-  /// Returns: drift migration strategy for create/upgrade paths.
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (Migrator m) async {
           await m.createAll();
         },
-        onUpgrade: (Migrator m, int from, int to) async {
-          if (from < 2) {
-            await m.addColumn(friends, friends.reminderIntervalDays);
-            await m.addColumn(friends, friends.photoPath);
-            await customStatement(
-              'ALTER TABLE friends DROP COLUMN description',
-            );
-          }
-          if (from < 3) {
-            await m.addColumn(friends, friends.lastContactedAt);
-          }
-          if (from < 4) {
-            await m.createTable(groups);
-            await m.createTable(friendGroupLinks);
-          }
-          if (from < 5) {
-            await m.addColumn(friends, friends.closenessLevel);
-            await m.addColumn(friends, friends.moodTag);
-            await m.addColumn(friends, friends.lastChatSnippet);
-            await m.addColumn(friends, friends.howWeMet);
-          }
-          if (from < 6) {
-            await m.addColumn(friends, friends.phoneNumber);
-          }
-        },
       );
-}
-
-/// Opens a SQLite file in app documents and returns a lazy [QueryExecutor].
-///
-/// Returns: a [LazyDatabase] that Drift will open on first access.
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    if (Platform.isAndroid) {
-      await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
-    }
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'friends_reminder.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
 }

@@ -41,14 +41,18 @@ class FriendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final today = dateOnly(referenceDate);
-    final isBirthday = isSameMonthDay(today, friend.birthday);
-    final isReachOutDay = isReachOutRhythmDay(referenceDate, friend);
+    final isBirthday =
+        !friend.isFrozen && isSameMonthDay(today, friend.birthday);
+    final isReachOutDay =
+        !friend.isFrozen && isReachOutRhythmDay(referenceDate, friend);
     final countdown =
         birthdayCountdownLabel(context, friend.birthday, referenceDate);
     final md = formatMonthDay(friend.birthday);
 
     Color cardSurface = scheme.surfaceContainerLow;
-    if (isBirthday && isReachOutDay) {
+    if (friend.isFrozen) {
+      cardSurface = scheme.surfaceContainerHighest.withValues(alpha: 0.55);
+    } else if (isBirthday && isReachOutDay) {
       cardSurface =
           Color.lerp(scheme.primaryContainer, scheme.secondaryContainer, 0.45)!
               .withValues(alpha: 0.55);
@@ -81,16 +85,41 @@ class FriendCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        friend.name,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.2,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              friend.name,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.2,
+                                  ),
                             ),
+                          ),
+                          if (friend.isFrozen) ...[
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.ac_unit_rounded,
+                              size: 18,
+                              color: scheme.primary,
+                            ),
+                          ],
+                        ],
                       ),
+                      if (friend.isFrozen) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Frozen · reminders paused',
+                          style:
+                              Theme.of(context).textTheme.labelMedium?.copyWith(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                        ),
+                      ],
                       if (groupAccentColors != null &&
                           groupAccentColors!.isNotEmpty) ...[
                         const SizedBox(height: 8),

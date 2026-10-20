@@ -106,6 +106,16 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
   late final GeneratedColumn<String> phoneNumber = GeneratedColumn<String>(
       'phone_number', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _isFrozenMeta =
+      const VerificationMeta('isFrozen');
+  @override
+  late final GeneratedColumn<bool> isFrozen = GeneratedColumn<bool>(
+      'is_frozen', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_frozen" IN (0, 1))'),
+      defaultValue: const Constant(false));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -130,6 +140,7 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
         lastChatSnippet,
         howWeMet,
         phoneNumber,
+        isFrozen,
         createdAt
       ];
   @override
@@ -216,6 +227,10 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           phoneNumber.isAcceptableOrUnknown(
               data['phone_number']!, _phoneNumberMeta));
     }
+    if (data.containsKey('is_frozen')) {
+      context.handle(_isFrozenMeta,
+          isFrozen.isAcceptableOrUnknown(data['is_frozen']!, _isFrozenMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -258,6 +273,8 @@ class $FriendsTable extends Friends with TableInfo<$FriendsTable, FriendRow> {
           .read(DriftSqlType.string, data['${effectivePrefix}how_we_met']),
       phoneNumber: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}phone_number']),
+      isFrozen: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_frozen'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
     );
@@ -312,6 +329,9 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
   /// Optional mobile number (digits / + for display; used for call + WhatsApp on detail).
   final String? phoneNumber;
 
+  /// When true, reminders are paused and the friend is hidden from Home / Calendar loops.
+  final bool isFrozen;
+
   /// When this row was first created (UTC).
   final DateTime createdAt;
   const FriendRow(
@@ -329,6 +349,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       this.lastChatSnippet,
       this.howWeMet,
       this.phoneNumber,
+      required this.isFrozen,
       required this.createdAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -362,6 +383,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
     if (!nullToAbsent || phoneNumber != null) {
       map['phone_number'] = Variable<String>(phoneNumber);
     }
+    map['is_frozen'] = Variable<bool>(isFrozen);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -395,6 +417,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       phoneNumber: phoneNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(phoneNumber),
+      isFrozen: Value(isFrozen),
       createdAt: Value(createdAt),
     );
   }
@@ -419,6 +442,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       lastChatSnippet: serializer.fromJson<String?>(json['lastChatSnippet']),
       howWeMet: serializer.fromJson<String?>(json['howWeMet']),
       phoneNumber: serializer.fromJson<String?>(json['phoneNumber']),
+      isFrozen: serializer.fromJson<bool>(json['isFrozen']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -441,6 +465,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       'lastChatSnippet': serializer.toJson<String?>(lastChatSnippet),
       'howWeMet': serializer.toJson<String?>(howWeMet),
       'phoneNumber': serializer.toJson<String?>(phoneNumber),
+      'isFrozen': serializer.toJson<bool>(isFrozen),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -460,6 +485,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           Value<String?> lastChatSnippet = const Value.absent(),
           Value<String?> howWeMet = const Value.absent(),
           Value<String?> phoneNumber = const Value.absent(),
+          bool? isFrozen,
           DateTime? createdAt}) =>
       FriendRow(
         id: id ?? this.id,
@@ -481,6 +507,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
             : this.lastChatSnippet,
         howWeMet: howWeMet.present ? howWeMet.value : this.howWeMet,
         phoneNumber: phoneNumber.present ? phoneNumber.value : this.phoneNumber,
+        isFrozen: isFrozen ?? this.isFrozen,
         createdAt: createdAt ?? this.createdAt,
       );
   FriendRow copyWithCompanion(FriendsCompanion data) {
@@ -512,6 +539,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       howWeMet: data.howWeMet.present ? data.howWeMet.value : this.howWeMet,
       phoneNumber:
           data.phoneNumber.present ? data.phoneNumber.value : this.phoneNumber,
+      isFrozen: data.isFrozen.present ? data.isFrozen.value : this.isFrozen,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -533,6 +561,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           ..write('lastChatSnippet: $lastChatSnippet, ')
           ..write('howWeMet: $howWeMet, ')
           ..write('phoneNumber: $phoneNumber, ')
+          ..write('isFrozen: $isFrozen, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -554,6 +583,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
       lastChatSnippet,
       howWeMet,
       phoneNumber,
+      isFrozen,
       createdAt);
   @override
   bool operator ==(Object other) =>
@@ -573,6 +603,7 @@ class FriendRow extends DataClass implements Insertable<FriendRow> {
           other.lastChatSnippet == this.lastChatSnippet &&
           other.howWeMet == this.howWeMet &&
           other.phoneNumber == this.phoneNumber &&
+          other.isFrozen == this.isFrozen &&
           other.createdAt == this.createdAt);
 }
 
@@ -591,6 +622,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
   final Value<String?> lastChatSnippet;
   final Value<String?> howWeMet;
   final Value<String?> phoneNumber;
+  final Value<bool> isFrozen;
   final Value<DateTime> createdAt;
   const FriendsCompanion({
     this.id = const Value.absent(),
@@ -607,6 +639,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     this.lastChatSnippet = const Value.absent(),
     this.howWeMet = const Value.absent(),
     this.phoneNumber = const Value.absent(),
+    this.isFrozen = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   FriendsCompanion.insert({
@@ -624,6 +657,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     this.lastChatSnippet = const Value.absent(),
     this.howWeMet = const Value.absent(),
     this.phoneNumber = const Value.absent(),
+    this.isFrozen = const Value.absent(),
     this.createdAt = const Value.absent(),
   })  : name = Value(name),
         birthday = Value(birthday);
@@ -642,6 +676,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     Expression<String>? lastChatSnippet,
     Expression<String>? howWeMet,
     Expression<String>? phoneNumber,
+    Expression<bool>? isFrozen,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -661,6 +696,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       if (lastChatSnippet != null) 'last_chat_snippet': lastChatSnippet,
       if (howWeMet != null) 'how_we_met': howWeMet,
       if (phoneNumber != null) 'phone_number': phoneNumber,
+      if (isFrozen != null) 'is_frozen': isFrozen,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -680,6 +716,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       Value<String?>? lastChatSnippet,
       Value<String?>? howWeMet,
       Value<String?>? phoneNumber,
+      Value<bool>? isFrozen,
       Value<DateTime>? createdAt}) {
     return FriendsCompanion(
       id: id ?? this.id,
@@ -697,6 +734,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
       lastChatSnippet: lastChatSnippet ?? this.lastChatSnippet,
       howWeMet: howWeMet ?? this.howWeMet,
       phoneNumber: phoneNumber ?? this.phoneNumber,
+      isFrozen: isFrozen ?? this.isFrozen,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -747,6 +785,9 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
     if (phoneNumber.present) {
       map['phone_number'] = Variable<String>(phoneNumber.value);
     }
+    if (isFrozen.present) {
+      map['is_frozen'] = Variable<bool>(isFrozen.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -770,6 +811,7 @@ class FriendsCompanion extends UpdateCompanion<FriendRow> {
           ..write('lastChatSnippet: $lastChatSnippet, ')
           ..write('howWeMet: $howWeMet, ')
           ..write('phoneNumber: $phoneNumber, ')
+          ..write('isFrozen: $isFrozen, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -1327,6 +1369,7 @@ typedef $$FriendsTableCreateCompanionBuilder = FriendsCompanion Function({
   Value<String?> lastChatSnippet,
   Value<String?> howWeMet,
   Value<String?> phoneNumber,
+  Value<bool> isFrozen,
   Value<DateTime> createdAt,
 });
 typedef $$FriendsTableUpdateCompanionBuilder = FriendsCompanion Function({
@@ -1344,6 +1387,7 @@ typedef $$FriendsTableUpdateCompanionBuilder = FriendsCompanion Function({
   Value<String?> lastChatSnippet,
   Value<String?> howWeMet,
   Value<String?> phoneNumber,
+  Value<bool> isFrozen,
   Value<DateTime> createdAt,
 });
 
@@ -1425,6 +1469,9 @@ class $$FriendsTableFilterComposer
 
   ColumnFilters<String> get phoneNumber => $composableBuilder(
       column: $table.phoneNumber, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isFrozen => $composableBuilder(
+      column: $table.isFrozen, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -1508,6 +1555,9 @@ class $$FriendsTableOrderingComposer
   ColumnOrderings<String> get phoneNumber => $composableBuilder(
       column: $table.phoneNumber, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get isFrozen => $composableBuilder(
+      column: $table.isFrozen, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 }
@@ -1562,6 +1612,9 @@ class $$FriendsTableAnnotationComposer
 
   GeneratedColumn<String> get phoneNumber => $composableBuilder(
       column: $table.phoneNumber, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFrozen =>
+      $composableBuilder(column: $table.isFrozen, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -1625,6 +1678,7 @@ class $$FriendsTableTableManager extends RootTableManager<
             Value<String?> lastChatSnippet = const Value.absent(),
             Value<String?> howWeMet = const Value.absent(),
             Value<String?> phoneNumber = const Value.absent(),
+            Value<bool> isFrozen = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
           }) =>
               FriendsCompanion(
@@ -1642,6 +1696,7 @@ class $$FriendsTableTableManager extends RootTableManager<
             lastChatSnippet: lastChatSnippet,
             howWeMet: howWeMet,
             phoneNumber: phoneNumber,
+            isFrozen: isFrozen,
             createdAt: createdAt,
           ),
           createCompanionCallback: ({
@@ -1659,6 +1714,7 @@ class $$FriendsTableTableManager extends RootTableManager<
             Value<String?> lastChatSnippet = const Value.absent(),
             Value<String?> howWeMet = const Value.absent(),
             Value<String?> phoneNumber = const Value.absent(),
+            Value<bool> isFrozen = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
           }) =>
               FriendsCompanion.insert(
@@ -1676,6 +1732,7 @@ class $$FriendsTableTableManager extends RootTableManager<
             lastChatSnippet: lastChatSnippet,
             howWeMet: howWeMet,
             phoneNumber: phoneNumber,
+            isFrozen: isFrozen,
             createdAt: createdAt,
           ),
           withReferenceMapper: (p0) => p0

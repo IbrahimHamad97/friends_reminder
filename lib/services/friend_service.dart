@@ -209,6 +209,18 @@ class FriendService {
     return setLastContactedAt(id, DateTime.now());
   }
 
+  /// Pauses or resumes reminders for [id] (`isFrozen`).
+  ///
+  /// Returns: number of rows updated.
+  Future<int> setFrozen(int id, bool frozen) {
+    return (_database.update(_database.friends)..where((t) => t.id.equals(id)))
+        .write(
+          FriendsCompanion(
+            isFrozen: Value(frozen),
+          ),
+        );
+  }
+
   /// Updates only the last-conversation snippet (empty string clears it).
   Future<int> setLastChatSnippet(int id, String? snippet) {
     final trimmed = snippet?.trim();
@@ -219,7 +231,13 @@ class FriendService {
         );
   }
 
-  /// Deletes a friend permanently; clears local photo file if [photoPath] is not a remote URL.
+  /// Friends that still receive birthday / check-in schedules (not frozen).
+  Future<List<FriendRow>> getActiveFriends() async {
+    final rows = await getAllFriends();
+    return rows.where((f) => !f.isFrozen).toList();
+  }
+
+  /// Deletes a friend permanently; clears the on-disk photo when [photoPath] is a local file.
   ///
   /// Parameters:
   /// - [id]: friend identifier.
