@@ -11,6 +11,7 @@ class SplashOverlay extends StatefulWidget {
   const SplashOverlay({
     super.key,
     required this.child,
+    required this.themePreset,
     this.title = 'Friends Reminder',
     this.subtitle = 'Birthdays & check-ins, kept close',
     this.totalDuration = const Duration(milliseconds: 2200),
@@ -18,6 +19,9 @@ class SplashOverlay extends StatefulWidget {
 
   /// App tree after the splash finishes.
   final Widget child;
+
+  /// Applied palette used before [MaterialApp] is visible.
+  final AppThemePreset themePreset;
 
   /// Primary splash title.
   final String title;
@@ -32,7 +36,8 @@ class SplashOverlay extends StatefulWidget {
   State<SplashOverlay> createState() => _SplashOverlayState();
 }
 
-class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProviderStateMixin {
+class _SplashOverlayState extends State<SplashOverlay>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   /// Entrance: fade in.
@@ -94,7 +99,7 @@ class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final showSplash = !_finished;
-    final scheme = AppTheme.dark.colorScheme;
+    final scheme = AppTheme.fromPreset(widget.themePreset).colorScheme;
     final titleStyle = GoogleFonts.plusJakartaSans(
       fontSize: 32,
       fontWeight: FontWeight.w800,
@@ -140,7 +145,8 @@ class _SplashOverlayState extends State<SplashOverlay> with SingleTickerProvider
                           child: SlideTransition(
                             position: _enterSlide,
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 32),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

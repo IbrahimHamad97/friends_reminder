@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/database.dart';
@@ -17,11 +16,6 @@ import 'widgets/splash_overlay.dart';
 /// Returns: does not return; schedules [runApp].
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await dotenv.load(fileName: 'assets/config/cloudinary.env');
-  } catch (e, st) {
-    debugPrint('Could not load assets/config/cloudinary.env: $e\n$st');
-  }
   final database = AppDatabase();
   final friendService = FriendService(database);
   final groupService = GroupService(database);
@@ -48,7 +42,7 @@ class FriendsReminderApp extends StatefulWidget {
   ///
   /// Parameters:
   /// - [friendService]: friend persistence API for routed screens.
-  /// - [themeService]: persisted light/dark preference.
+  /// - [themeService]: persisted global palette preference.
   const FriendsReminderApp({
     super.key,
     required this.friendService,
@@ -69,8 +63,10 @@ class FriendsReminderApp extends StatefulWidget {
   State<FriendsReminderApp> createState() => _FriendsReminderAppState();
 }
 
-class _FriendsReminderAppState extends State<FriendsReminderApp> with WidgetsBindingObserver {
-  final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+class _FriendsReminderAppState extends State<FriendsReminderApp>
+    with WidgetsBindingObserver {
+  final GlobalKey<NavigatorState> _rootNavigatorKey =
+      GlobalKey<NavigatorState>();
 
   late final GoRouter _router = createAppRouter(
     friendService: widget.friendService,
@@ -111,6 +107,13 @@ class _FriendsReminderAppState extends State<FriendsReminderApp> with WidgetsBin
     }
   }
 
+  @override
+  void didChangePlatformBrightness() {
+    widget.themeService.syncPlatformBrightness(
+      WidgetsBinding.instance.platformDispatcher.platformBrightness,
+    );
+  }
+
   /// Builds the themed [MaterialApp.router].
   ///
   /// Parameters:
@@ -119,14 +122,16 @@ class _FriendsReminderAppState extends State<FriendsReminderApp> with WidgetsBin
   /// Returns: configured root widget.
   @override
   Widget build(BuildContext context) {
+    final preset = widget.themeService.current;
     return SplashOverlay(
+      themePreset: preset,
       child: MaterialApp.router(
         scaffoldMessengerKey: rootScaffoldMessengerKey,
         title: 'Friends Reminder',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: widget.themeService.mode,
+        theme: AppTheme.fromPreset(preset),
+        themeAnimationDuration: const Duration(milliseconds: 350),
+        themeAnimationCurve: Curves.easeOutCubic,
         routerConfig: _router,
         builder: (context, child) {
           return MediaQuery(
