@@ -90,51 +90,80 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
     _load();
   }
 
-  /// Loads all friends for checkboxes, then (in edit mode) the group row and member ids.
+  /// Loads friends for membership checkboxes, then (in edit mode) the group row.
   ///
-  /// Pops with a snackbar if the group id is missing. Sets [_initialized] when the form can build.
+  /// **Create mode** paints the form immediately — the member list is secondary and
+  /// must not leave a forever spinner if a DB read stalls.
   ///
   /// Returns: future that completes when loading finishes or the route is popped.
   Future<void> _load() async {
-    final friends = await widget.friendService.getAllFriends();
-    if (!mounted) {
-      return;
-    }
-    setState(() => _allFriends = friends);
-
     final id = widget.groupId;
     if (id == null) {
-      setState(() => _initialized = true);
+      if (mounted) {
+        setState(() => _initialized = true);
+      }
+      await _loadFriendsForForm();
       return;
     }
+
     setState(() => _loading = true);
-    final row = await widget.groupService.getGroupById(id);
-    if (!mounted) {
-      return;
-    }
-    if (row == null) {
+    try {
+      final friends = await widget.friendService.getAllFriends();
+      final row = await widget.groupService.getGroupById(id);
+      if (!mounted) {
+        return;
+      }
+      if (row == null) {
+        setState(() {
+          _allFriends = friends;
+          _loading = false;
+          _initialized = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Group not found')),
+        );
+        context.pop();
+        return;
+      }
+      _nameController.text = row.name;
+      _colorArgb = row.colorArgb;
+      _storedPhotoPath = row.photoPath;
+      final members = await widget.groupService.getMemberIdsForGroup(id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _allFriends = friends;
+        _memberIds = members.toSet();
+        _loading = false;
+        _initialized = true;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _loading = false;
         _initialized = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Group not found')),
+        SnackBar(content: Text('Could not open group: $e')),
       );
       context.pop();
-      return;
     }
-    _nameController.text = row.name;
-    _colorArgb = row.colorArgb;
-    _storedPhotoPath = row.photoPath;
-    final members = await widget.groupService.getMemberIdsForGroup(id);
-    if (!mounted) {
-      return;
+  }
+
+  /// Fills the member checklist without blocking first paint on create.
+  Future<void> _loadFriendsForForm() async {
+    try {
+      final friends = await widget.friendService.getAllFriends();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _allFriends = friends);
+    } catch (e) {
+      debugPrint('Could not load friends for group form: $e');
     }
-    setState(() {
-      _memberIds = members.toSet();
-      _loading = false;
-      _initialized = true;
-    });
   }
 
   /// Disposes the group name controller.

@@ -3,7 +3,7 @@
 Living snapshot of **what’s shipped** vs **what’s planned**.  
 Detailed history: [`CHANGELOG_FEATURES.md`](CHANGELOG_FEATURES.md) · Architecture: [`friends_reminder.md`](friends_reminder.md)
 
-**Last updated:** 2026-10-19
+**Last updated:** 2026-10-24
 
 ---
 
@@ -103,7 +103,7 @@ Randomized check-in intervals by friendship level:
 
 ### Tests
 
-18. [ ] **Add tests** — scheduler catch-up (overdue check-in fires at the next reminder clock, not a full interval later), reroll only when cadence changes, freeze, themes, and notification banners. Today only the Home tab widget test exists.
+18. [x] **Add tests** — unit/widget coverage for check-in catch-up (`nextCheckInNotificationDay`), cadence reroll, freeze + active friends, themes, notification banners, validators/search/phone, FriendService/GroupService, Home smoke test. Run with `flutter test`.
 
 ### Suggested build order
 

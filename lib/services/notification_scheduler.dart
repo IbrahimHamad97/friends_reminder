@@ -184,7 +184,8 @@ class NotificationScheduler {
   /// [Permission.notification] is permanently denied.
   ///
   /// Returns: which path was taken.
-  Future<NotificationEnableAction> enableOsNotificationsFromUserGesture() async {
+  Future<NotificationEnableAction>
+      enableOsNotificationsFromUserGesture() async {
     if (!supportsOsNotificationPermissionPrompt) {
       return NotificationEnableAction.unsupported;
     }
@@ -388,6 +389,37 @@ class NotificationScheduler {
   /// Returns: notification id outside birthday range.
   static int checkInNotificationId(int friendId, int slot) =>
       500000 + friendId * 32 + slot;
+
+  /// Slot stride used in [checkInNotificationId] — cancel this many ids per friend.
+  static const int _checkInIdSlotStride = 32;
+
+  /// Cancels birthday + every check-in id for [friendId] in the OS queue.
+  ///
+  /// Call this **before** removing the DB row so a failed [rescheduleAll] cannot
+  /// leave a deleted friend's alarms pending (seen after short-interval deletes).
+  ///
+  /// Returns: future completing after cancel attempts (errors are logged).
+  Future<void> cancelForFriend(int friendId) async {
+    if (kIsWeb || Platform.isLinux) {
+      return;
+    }
+    if (!_initialized) {
+      await initialize();
+    }
+    if (!_initialized) {
+      return;
+    }
+    try {
+      await _plugin.cancel(birthdayNotificationId(friendId));
+      for (var slot = 0; slot < _checkInIdSlotStride; slot++) {
+        await _plugin.cancel(checkInNotificationId(friendId, slot));
+      }
+      // Force the next [rescheduleAll] to rebuild even if fingerprints match.
+      _lastRescheduleFingerprint = null;
+    } catch (e, st) {
+      debugPrint('cancelForFriend($friendId) failed: $e\n$st');
+    }
+  }
 
   /// Schedules birthday + lookahead check-ins for one row.
   ///

@@ -81,7 +81,8 @@ class PickedPhotoReducer {
   /// Reads [source] through the same resize/JPEG pipeline as [reduceToTemp], returns bytes, deletes temp output.
   ///
   /// On web, reads [source] bytes as-is (callers should avoid persisting photos on web).
-  static Future<List<int>> readReducedJpegBytes(File source, PickedPhotoKind kind) async {
+  static Future<List<int>> readReducedJpegBytes(
+      File source, PickedPhotoKind kind) async {
     if (kIsWeb) {
       return source.readAsBytes();
     }

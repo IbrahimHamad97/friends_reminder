@@ -7,6 +7,16 @@ The living product/architecture overview stays in **`friends_reminder.md`**.
 
 ---
 
+## 2026-10-24 — Automated tests for core logic and UI
+
+**Summary:** Expanded `test/` beyond the Home smoke test: date/check-in utils (including overdue notification catch-up), FriendService (freeze, reroll), GroupService, ThemeService, prefs, validators/search/phone, FriendCard freeze badge, notification banners, SavingFilledButton. **75** tests via `flutter test`.
+
+**Primary code:** `test/**` (helpers + unit/widget suites).
+
+**Docs:** `PROJECT_STATUS.md` (#18 done).
+
+---
+
 ## 2026-10-19 — Photos back on device (Cloudinary removed)
 
 **Summary:** Friend avatars and group covers are stored as compressed JPEGs under the app documents directory (`photos/friends/`, `photos/groups/`). Drift `photoPath` holds the absolute file path again. Cloudinary upload, `flutter_dotenv` / `http` photo deps, and `assets/config/cloudinary.env` are removed. Leftover HTTPS URLs in existing DBs still display until the user replaces the photo.

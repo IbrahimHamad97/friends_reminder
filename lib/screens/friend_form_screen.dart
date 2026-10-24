@@ -103,58 +103,88 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
 
   /// Loads ordered groups, then (in edit mode) the friend row and current group ids.
   ///
-  /// Pops the route if the friend id is missing. Sets [_initialized] when ready to build.
+  /// **Create mode** shows the form immediately — groups are optional chips and must
+  /// not block the whole screen (a hung DB read previously left a forever spinner).
+  /// **Edit mode** still waits for the row, with try/catch so errors surface.
   ///
   /// Returns: future that completes when bootstrap finishes or navigates away.
   Future<void> _bootstrap() async {
-    final groups = await widget.groupService.getAllGroupsOrdered();
-    if (!mounted) {
-      return;
-    }
-    setState(() => _allGroups = groups);
-
     final id = widget.friendId;
     if (id == null) {
-      setState(() => _initialized = true);
+      if (mounted) {
+        setState(() => _initialized = true);
+      }
+      await _loadGroupsForForm();
       return;
     }
+
     setState(() => _loading = true);
-    final row = await widget.friendService.getFriendById(id);
-    if (!mounted) {
-      return;
-    }
-    if (row == null) {
+    try {
+      final groups = await widget.groupService.getAllGroupsOrdered();
+      final row = await widget.friendService.getFriendById(id);
+      if (!mounted) {
+        return;
+      }
+      if (row == null) {
+        setState(() {
+          _allGroups = groups;
+          _loading = false;
+          _initialized = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Friend not found')),
+        );
+        context.pop();
+        return;
+      }
+      _nameController.text = row.name;
+      _birthday = row.birthday;
+      _notesController.text = row.notes ?? '';
+      _reminderDaysController.text = '${row.reminderIntervalDays}';
+      _lastChatController.text = row.lastChatSnippet ?? '';
+      _howWeMetController.text = row.howWeMet ?? '';
+      _phoneController.text = row.phoneNumber ?? '';
+      _closenessLevel = FriendLevel.fromStorage(row.closenessLevel);
+      _useRandomCheckIn = row.useRandomCheckIn;
+      _mood = FriendMood.fromStorage(row.moodTag);
+      _storedPhotoPath = row.photoPath;
+      _lastContactedAt = row.lastContactedAt;
+      final gids = await widget.groupService.getGroupIdsForFriend(id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _allGroups = groups;
+        _selectedGroupIds = gids;
+        _loading = false;
+        _initialized = true;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _loading = false;
         _initialized = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Friend not found')),
+        SnackBar(content: Text('Could not open friend: $e')),
       );
       context.pop();
-      return;
     }
-    _nameController.text = row.name;
-    _birthday = row.birthday;
-    _notesController.text = row.notes ?? '';
-    _reminderDaysController.text = '${row.reminderIntervalDays}';
-    _lastChatController.text = row.lastChatSnippet ?? '';
-    _howWeMetController.text = row.howWeMet ?? '';
-    _phoneController.text = row.phoneNumber ?? '';
-    _closenessLevel = FriendLevel.fromStorage(row.closenessLevel);
-    _useRandomCheckIn = row.useRandomCheckIn;
-    _mood = FriendMood.fromStorage(row.moodTag);
-    _storedPhotoPath = row.photoPath;
-    _lastContactedAt = row.lastContactedAt;
-    final gids = await widget.groupService.getGroupIdsForFriend(id);
-    if (!mounted) {
-      return;
+  }
+
+  /// Fills group chips without blocking first paint on create.
+  Future<void> _loadGroupsForForm() async {
+    try {
+      final groups = await widget.groupService.getAllGroupsOrdered();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _allGroups = groups);
+    } catch (e) {
+      debugPrint('Could not load groups for friend form: $e');
     }
-    setState(() {
-      _selectedGroupIds = gids;
-      _loading = false;
-      _initialized = true;
-    });
   }
 
   /// Disposes all text controllers owned by this state.
@@ -483,6 +513,9 @@ class _FriendFormScreenState extends State<FriendFormScreen> {
     if (!ok || !mounted) {
       return;
     }
+    // Cancel OS alarms for this id first — do not rely only on rescheduleAll,
+    // which can fail silently and leave check-ins pending after delete.
+    await NotificationScheduler.instance.cancelForFriend(id);
     await widget.friendService.deleteFriend(id);
     await _refreshNotifications();
     if (!mounted) {
